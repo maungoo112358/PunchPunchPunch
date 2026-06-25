@@ -17,11 +17,11 @@ export function createPlayerController(character, input, cameraFollow) {
 
       if (moving) {
         // Rotate intent by camera yaw into a world direction.
-        // camForward = (sin yaw, 0, cos yaw); camRight = (cos yaw, 0, -sin yaw).
+        // camForward = (sin yaw, 0, cos yaw); camRight = (-cos yaw, 0, sin yaw).
         const yaw = cameraFollow.getYaw();
         const s = Math.sin(yaw);
         const c = Math.cos(yaw);
-        worldDir.set(s * intent.z + c * intent.x, 0, c * intent.z - s * intent.x);
+        worldDir.set(s * intent.z - c * intent.x, 0, c * intent.z + s * intent.x);
 
         character.model.position.addScaledVector(worldDir, SPEED * dt);
         character.faceDirection(worldDir, dt);

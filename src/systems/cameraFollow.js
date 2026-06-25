@@ -7,7 +7,7 @@ const DIST = 9; // how far behind the character
 const HEIGHT = 6; // how high above
 const LOOK_HEIGHT = 1.5; // aim at the upper body, not the feet
 const POS_DAMP = 10; // camera position follow speed
-const YAW_DAMP = 5; // how fast the camera swings behind a turn (lower = lazier)
+const YAW_DAMP = 2; // how fast the camera swings behind a turn (lower = lazier)
 
 export function createCameraFollow(camera, target) {
   let yaw = 0; // smoothed camera heading (radians)

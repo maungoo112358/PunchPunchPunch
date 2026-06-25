@@ -195,6 +195,9 @@ export function addGrass(scene, target) {
       uWindScale: { value: 0.3 },
       uGustFrequency: { value: 0.3 },
       uGustScale: { value: 0.05 },
+      uPlayerPos: { value: new THREE.Vector3(1e9, 0, 1e9) }, // off in the void until the model loads
+      uPlayerRadius: { value: 1.8 }, // parting radius around the character
+      uPlayerStrength: { value: 0.4 }, // how far tips bend away (subtle part, not a blast)
       uSunDir: { value: new THREE.Vector3(3, 4, 5).normalize() },
       uSunColor: { value: new THREE.Color(COLORS.SUN) },
       uSkyColor: { value: new THREE.Color(COLORS.SKY) },
@@ -271,6 +274,7 @@ export function addGrass(scene, target) {
       material.uniforms.uTime.value += dt;
       if (target && target.model) {
         const p = target.model.position;
+        material.uniforms.uPlayerPos.value.copy(p); // grass parts around him
         const pcx = Math.floor(p.x / CHUNK_SIZE);
         const pcz = Math.floor(p.z / CHUNK_SIZE);
         if (pcx !== lastPcx || pcz !== lastPcz) {

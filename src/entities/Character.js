@@ -14,7 +14,7 @@ export class Character {
     this.mixer = null; // AnimationMixer ≈ Unity Animator
     this.actions = {}; // name -> AnimationAction (pre-built for crossfading)
     this.current = null; // name of the active action
-    this.turnSpeed = 10; // how fast the model rotates to face travel direction
+    this.turnSpeed = 6; // how fast the model rotates to face travel direction
 
     loader.load(
       modelUrl,
