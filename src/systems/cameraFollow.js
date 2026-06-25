@@ -1,27 +1,43 @@
 import * as THREE from "three";
 
-// PoE2 fixed-angle follow: the camera keeps a CONSTANT offset from the target (the
-// offset vector IS the angle), never rotates, and smoothly trails with damping.
-const OFFSET = new THREE.Vector3(0, 10, 7); // ~55° pitch: atan(10/7). Higher Y = more top-down.
-const DAMPING = 6; // higher = snappier follow, lower = floatier trailing
-const LOOK_HEIGHT = 1; // aim at torso height, not the feet
+// Third-person follow: the camera sits BEHIND the character's back and smoothly
+// swings around to stay behind him as he turns. It exposes its yaw so movement can
+// be made camera-relative ("forward" = into the screen).
+const DIST = 9; // how far behind the character
+const HEIGHT = 6; // how high above
+const LOOK_HEIGHT = 1.5; // aim at the upper body, not the feet
+const POS_DAMP = 10; // camera position follow speed
+const YAW_DAMP = 5; // how fast the camera swings behind a turn (lower = lazier)
 
 export function createCameraFollow(camera, target) {
+  let yaw = 0; // smoothed camera heading (radians)
   const desired = new THREE.Vector3();
   const lookAt = new THREE.Vector3();
 
   return {
+    getYaw() {
+      return yaw;
+    },
     update(dt) {
       if (!target.model) return;
       const p = target.model.position;
 
-      // Frame-rate-independent smoothing toward the desired (offset) position.
-      desired.copy(p).add(OFFSET);
-      const t = 1 - Math.exp(-DAMPING * dt);
+      // Smoothly turn the camera yaw toward the character's heading (shortest path).
+      const targetYaw = target.model.rotation.y;
+      let dYaw = targetYaw - yaw;
+      dYaw = Math.atan2(Math.sin(dYaw), Math.cos(dYaw));
+      yaw += dYaw * Math.min(1, YAW_DAMP * dt);
+
+      // Behind the back = opposite the character's forward (sin yaw, 0, cos yaw).
+      desired.set(
+        p.x - Math.sin(yaw) * DIST,
+        p.y + HEIGHT,
+        p.z - Math.cos(yaw) * DIST
+      );
+      const t = 1 - Math.exp(-POS_DAMP * dt); // frame-rate-independent smoothing
       camera.position.lerp(desired, t);
 
-      lookAt.copy(p);
-      lookAt.y += LOOK_HEIGHT;
+      lookAt.set(p.x, p.y + LOOK_HEIGHT, p.z);
       camera.lookAt(lookAt);
     },
   };

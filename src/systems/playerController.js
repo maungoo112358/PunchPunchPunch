@@ -1,25 +1,32 @@
 import * as THREE from "three";
 
-// Drives the character from input each frame: move on the XZ plane, face travel
-// direction, and switch Idle/Run. (Unity analog: a PlayerController MonoBehaviour.)
+// Drives the character from CAMERA-RELATIVE input: the keyboard intent (forward/
+// strafe) is rotated by the camera's yaw, so "forward" is always into the screen.
+// Then the character moves + faces that world direction. (Unity: a PlayerController.)
 const SPEED = 4.5; // units per second
 
-export function createPlayerController(character, input) {
-  const move = new THREE.Vector3(); // reused per frame
+export function createPlayerController(character, input, cameraFollow) {
+  const worldDir = new THREE.Vector3(); // reused per frame
 
   return {
     update(dt) {
-      if (!character.model) return; // model still loading
+      if (!character.model) return;
 
-      const dir = input.getDirection();
-      const moving = dir.lengthSq() > 0;
+      const intent = input.getDirection(); // (x = strafe, z = forward) in camera space
+      const moving = intent.lengthSq() > 0;
 
       if (moving) {
-        move.copy(dir).multiplyScalar(SPEED * dt);
-        character.model.position.add(move);
-        character.faceDirection(dir, dt);
+        // Rotate intent by camera yaw into a world direction.
+        // camForward = (sin yaw, 0, cos yaw); camRight = (cos yaw, 0, -sin yaw).
+        const yaw = cameraFollow.getYaw();
+        const s = Math.sin(yaw);
+        const c = Math.cos(yaw);
+        worldDir.set(s * intent.z + c * intent.x, 0, c * intent.z - s * intent.x);
+
+        character.model.position.addScaledVector(worldDir, SPEED * dt);
+        character.faceDirection(worldDir, dt);
       }
-      character.setMoving(moving); // crossfades Idle<->Run (no-op if unchanged)
+      character.setMoving(moving); // crossfades Idle<->Run
     },
   };
 }
