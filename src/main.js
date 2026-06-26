@@ -40,7 +40,7 @@ const grass = addGrass(scene, character);
 
 // --- Systems ----------------------------------------------------------------
 const input = createInput();
-const cameraFollow = createCameraFollow(camera, character);
+const cameraFollow = createCameraFollow(camera, character, input);
 const controller = createPlayerController(character, input, cameraFollow);
 const sunFollow = createSunFollow(sun, character);
 const stats = createStats();
