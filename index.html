@@ -25,6 +25,29 @@
   </head>
   <body>
     <script>
+      // TEMP on-screen error painter: any uncaught error shows as red text instead of a
+      // silent black screen (phones have no visible console). Remove once mobile is stable.
+      function showError(msg) {
+        const d = document.createElement("div");
+        d.style.cssText =
+          "position:fixed;inset:0;z-index:9999;background:#200;color:#f88;" +
+          "font:12px monospace;padding:14px;white-space:pre-wrap;overflow:auto;";
+        d.textContent = "ERROR:\n" + msg;
+        document.body.appendChild(d);
+      }
+      // Ignore Vite's own HMR/websocket noise — only surface real game crashes.
+      const isNoise = (s) => /vite|websocket/i.test(String(s || ""));
+      window.addEventListener("error", (e) => {
+        if (isNoise(e.filename) || isNoise(e.message)) return;
+        showError((e.message || e.error) + "\n\n" + ((e.error && e.error.stack) || "") + "\n" + (e.filename || "") + ":" + (e.lineno || ""));
+      });
+      window.addEventListener("unhandledrejection", (e) => {
+        const r = e.reason && (e.reason.stack || e.reason.message || e.reason);
+        if (isNoise(r)) return;
+        showError("Promise rejection:\n" + r);
+      });
+    </script>
+    <script>
       // TEMP mobile debug console: open the page with ?debug to get an on-screen console
       // (phones have no DevTools). Tap the floating gear → Console tab to read errors.
       // Remove this block once mobile is sorted.

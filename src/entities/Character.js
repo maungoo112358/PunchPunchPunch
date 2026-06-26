@@ -60,11 +60,6 @@ export class Character {
     this.current = name;
   }
 
-  // Convenience: Run while moving, Idle when stopped.
-  setMoving(isMoving) {
-    this.setAction(isMoving ? "Run" : "Idle");
-  }
-
   // Smoothly rotate the model to face a world-XZ direction (normalized).
   // Model forward is +Z at yaw 0, so target yaw = atan2(dir.x, dir.z).
   faceDirection(dir, dt) {

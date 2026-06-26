@@ -1,11 +1,8 @@
-// On-screen controls for TOUCH devices: a fixed virtual JOYSTICK pinned to BOTTOM-CENTER
-// (fills the move channel) and a look-drag everywhere else (fills the look channel). Built
-// only when a touch device is detected — on desktop this is inert, so keyboard/mouse stay
-// in charge. Manages its own DOM overlay (≈ a Unity uGUI canvas), never the WebGL loop.
-//
-// Two thumbs at once work: each touch is tracked by pointerId — a touch that lands ON the
-// stick drives movement; any other touch drives the camera.
-const RADIUS = 60; // px — joystick max travel from its (fixed) center
+// On-screen controls for TOUCH devices: a fixed bottom-center JOYSTICK (move) and a
+// look-drag everywhere else (look). Portrait is fine. Built only when a touch device is
+// detected — on desktop this is inert, so keyboard/mouse stay in charge. Manages its own
+// DOM overlay (≈ a Unity uGUI canvas), never the WebGL loop.
+const RADIUS = 60; // px — joystick max travel from its center
 const DEADZONE = 0.18; // ignore tiny thumb wobble (below this → no movement, no Run)
 const ANCHOR_BOTTOM = 110; // px the stick center sits above the bottom edge
 const GRAB_RADIUS = 130; // a touch within this of the stick center grabs it
@@ -15,11 +12,11 @@ export function createVirtualControls() {
     navigator.maxTouchPoints > 0 || window.matchMedia("(pointer: coarse)").matches;
 
   const move = { x: 0, z: 0 }; // x = strafe right+, z = forward+ (screen-up)
-  const look = { x: 0, y: 0 }; // per-frame drag delta, handed out by consumeLook()
+  const look = { x: 0, y: 0 }; // per-frame drag delta
   let lookX = 0;
   let lookY = 0;
 
-  // Desktop: return inert channels so input.js can merge unconditionally.
+  // Desktop: inert channels so input.js can merge unconditionally.
   if (!isTouch) {
     return {
       enabled: false,
@@ -34,7 +31,7 @@ export function createVirtualControls() {
     };
   }
 
-  // --- DOM overlay: full-screen, transparent, receives the touches ---
+  // --- full-screen touch overlay ---
   const root = document.createElement("div");
   Object.assign(root.style, {
     position: "fixed",
@@ -43,8 +40,8 @@ export function createVirtualControls() {
     touchAction: "none",
   });
 
-  // Joystick visuals — always visible, pinned bottom-center via CSS. pointerEvents:none so
-  // they never intercept; the root div is the single touch target.
+  // Joystick visuals — always visible, pinned bottom-center. pointerEvents:none so the root
+  // is the single touch target (stick/look touches keep e.target === root).
   const base = document.createElement("div");
   Object.assign(base.style, {
     position: "fixed",
@@ -52,7 +49,7 @@ export function createVirtualControls() {
     bottom: `${ANCHOR_BOTTOM}px`,
     width: "120px",
     height: "120px",
-    transform: "translate(-50%, 50%)", // center the ring on the anchor point
+    transform: "translate(-50%, 50%)",
     borderRadius: "50%",
     border: "2px solid rgba(255,255,255,0.35)",
     background: "rgba(255,255,255,0.07)",
@@ -74,35 +71,33 @@ export function createVirtualControls() {
   root.appendChild(knob);
   document.body.appendChild(root);
 
-  // The fixed stick center in page coordinates (recomputed on demand; survives resize/rotate).
+  // --- stick geometry (recomputed on demand; survives resize/rotate) ---
   function centerX() {
     return window.innerWidth / 2;
   }
   function centerY() {
     return window.innerHeight - ANCHOR_BOTTOM;
   }
-  // Move the knob to an absolute offset (dx, dy) from the stick center.
   function setKnob(dx, dy) {
     knob.style.left = `${centerX() + dx}px`;
     knob.style.bottom = "auto";
-    knob.style.top = `${centerY() + dy - 27}px`; // -27 = half knob height
+    knob.style.top = `${centerY() + dy - 27}px`;
     knob.style.transform = "translate(-50%, 0)";
   }
   function resetKnob() {
-    // back to the CSS-pinned center
     knob.style.left = "50%";
     knob.style.top = "auto";
     knob.style.bottom = `${ANCHOR_BOTTOM}px`;
     knob.style.transform = "translate(-50%, 50%)";
   }
 
-  let moveId = null; // pointerId driving the joystick (null = none)
-  let lookId = null; // pointerId driving the look
+  let moveId = null;
+  let lookId = null;
   let lookLastX = 0;
   let lookLastY = 0;
 
   root.addEventListener("pointerdown", (e) => {
-    if (e.pointerType !== "touch") return; // mouse is handled by input.js
+    if (e.pointerType !== "touch") return; // mouse handled by input.js
     const onStick =
       Math.hypot(e.clientX - centerX(), e.clientY - centerY()) < GRAB_RADIUS;
     if (onStick && moveId === null) {
@@ -156,12 +151,9 @@ export function createVirtualControls() {
 
   return {
     enabled: true,
-    // Analog move vector (magnitude ≤ 1) — input.js feeds it straight through so a
-    // half-push walks slowly (the controller scales speed by magnitude).
     getMove() {
       return move;
     },
-    // Accumulated touch-drag delta since last call, then resets. Summed with mouse in input.js.
     consumeLook() {
       look.x = lookX;
       look.y = lookY;
