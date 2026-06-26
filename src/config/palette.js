@@ -21,4 +21,7 @@ export const COLORS = {
   // --- Grass (world/grass.js shader) ---
   GRASS_BASE:    0x1f343f, // #1f343f  dark cool teal (root)    — deep blue-green shadow
   GRASS_TIP:     0x5a93a0, // #5a93a0  moonlit teal-blue (tip)  — cool light catching the tops
+
+  // --- Props (world/props.js) ---
+  LEAF:          0x5e8a72, // #5e8a72  cool teal-green tint     — cools the bright daytime tree leaves into the twilight
 };

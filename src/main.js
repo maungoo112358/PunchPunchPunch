@@ -6,6 +6,7 @@ import { addLights } from "./world/lights.js";
 import { addGround } from "./world/ground.js";
 import { addGrass } from "./world/grass.js";
 import { addHeroLight } from "./world/heroLight.js";
+import { addProps } from "./world/props.js";
 import { Character } from "./entities/Character.js";
 import { createInput } from "./systems/input.js";
 import { createPlayerController } from "./systems/playerController.js";
@@ -31,6 +32,7 @@ scene.add(camera);
 const { sun } = addLights(scene);
 addGround(scene);
 addHeroLight(camera); // warm fill on the character, follows the view
+addProps(scene); // SPIKE: one tree off-center to judge scale + lighting
 
 // --- Entities ---------------------------------------------------------------
 const character = new Character(scene, "/models/Wizard.gltf");
