@@ -17,7 +17,7 @@ export function createRenderer() {
   // Tone mapping ≈ Unity URP Tonemapping + Post Exposure. Applied AFTER all lighting,
   // it's the global "camera" response. toneMappingExposure is our master brightness dial.
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.25; // slightly dimmer for the twilight mood
+  renderer.toneMappingExposure = 1.15; // dim for the deep twilight mood
 
   // Shadow maps on (caster/receiver flags live on the light + meshes themselves).
   renderer.shadowMap.enabled = true;

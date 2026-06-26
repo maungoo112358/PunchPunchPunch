@@ -22,7 +22,7 @@ const camera = createCamera();
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(COLORS.BACKGROUND); // pale hazy sky
 // Fog fades far grass + ground into the sky, hiding the field edge (and adding depth).
-scene.fog = new THREE.Fog(COLORS.BACKGROUND, 20, 46);
+scene.fog = new THREE.Fog(COLORS.BACKGROUND, 12, 40);
 
 // Camera must be in the scene graph so its child hero light is counted.
 scene.add(camera);
@@ -33,7 +33,7 @@ addGround(scene);
 addHeroLight(camera); // warm fill on the character, follows the view
 
 // --- Entities ---------------------------------------------------------------
-const character = new Character(scene, "/models/Goblin_Male.gltf");
+const character = new Character(scene, "/models/Wizard.gltf");
 
 // Grass follows the character, so it needs a reference to it.
 const grass = addGrass(scene, character);

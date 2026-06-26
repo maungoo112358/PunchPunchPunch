@@ -5,7 +5,7 @@ import { COLORS } from "../config/palette.js";
 // plus a HemisphereLight fill. Returns the lights in case callers want to tweak them.
 export function addLights(scene) {
   // DirectionalLight ≈ Unity directional light / sun: parallel rays, no falloff.
-  const sun = new THREE.DirectionalLight(COLORS.SUN, 0.85); // cool moonlight key (dim)
+  const sun = new THREE.DirectionalLight(COLORS.SUN, 0.75); // cool moonlight key (dim, deep night)
   sun.position.set(3, 4, 5);
 
   // Shadow casting + the light's ORTHOGRAPHIC shadow camera. Bound it tightly to the
@@ -25,7 +25,7 @@ export function addLights(scene) {
 
   // HemisphereLight ≈ Unity's "Gradient" environment lighting: sky color from above,
   // ground-bounce color from below, blended per surface normal. Natural outdoor fill.
-  const hemi = new THREE.HemisphereLight(COLORS.SKY, COLORS.GROUND_BOUNCE, 0.8); // cool twilight fill
+  const hemi = new THREE.HemisphereLight(COLORS.SKY, COLORS.GROUND_BOUNCE, 0.7); // cool twilight fill
   scene.add(hemi);
 
   return { sun, hemi };
