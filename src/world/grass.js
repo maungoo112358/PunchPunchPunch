@@ -56,7 +56,7 @@ function buildChunkGeometry() {
 // Move + repopulate a chunk to world coordinate (cx, cz). Blade positions are
 // stored in WORLD space (mesh stays at origin), so the wind shader samples world
 // coords directly and the field never visibly tiles.
-function assignChunk(chunk, cx, cz) {
+function assignChunk(chunk, cx, cz, path) {
   chunk.cx = cx;
   chunk.cz = cz;
   const ox = cx * CHUNK_SIZE;
@@ -69,11 +69,16 @@ function assignChunk(chunk, cx, cz) {
   const aHt = geo.attributes.aHeight;
   const aPh = geo.attributes.aPhase;
   for (let i = 0; i < BLADES_PER_CHUNK; i++) {
-    aPos.array[i * 3 + 0] = ox + rng() * CHUNK_SIZE;
+    const bx = ox + rng() * CHUNK_SIZE;
+    const bz = oz + rng() * CHUNK_SIZE;
+    aPos.array[i * 3 + 0] = bx;
     aPos.array[i * 3 + 1] = 0;
-    aPos.array[i * 3 + 2] = oz + rng() * CHUNK_SIZE;
+    aPos.array[i * 3 + 2] = bz;
     aRot.array[i] = rng() * Math.PI * 2;
-    aHt.array[i] = 0.9 + rng() * 0.6; // ~0.9..1.5 tall
+    // Always consume the height RNG (keeps layouts deterministic), but zero it out for
+    // blades on the path so the strip reads as bare ground.
+    const h = 0.9 + rng() * 0.6; // ~0.9..1.5 tall
+    aHt.array[i] = path && path.onPath(bx, bz) ? 0 : h;
     aPh.array[i] = rng() * Math.PI * 2;
   }
   aPos.needsUpdate = true;
@@ -182,7 +187,7 @@ const fragmentShader = /* glsl */ `
   }
 `;
 
-export function addGrass(scene, target) {
+export function addGrass(scene, target, path) {
   // One material shared by every chunk (blade positions carry their own world pos).
   const material = new THREE.ShaderMaterial({
     uniforms: {
@@ -257,7 +262,7 @@ export function addGrass(scene, target) {
       let chunk = active.get(d.key);
       if (!chunk) {
         chunk = free.pop();
-        assignChunk(chunk, d.cx, d.cz); // only newly-entered chunks repopulate
+        assignChunk(chunk, d.cx, d.cz, path); // only newly-entered chunks repopulate
         active.set(d.key, chunk);
       }
       chunk.geo.instanceCount = Math.floor(BLADES_PER_CHUNK * lodFraction(d.ring));
