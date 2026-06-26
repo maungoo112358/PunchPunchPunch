@@ -2,14 +2,39 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
     <title>PunchPunchPunch</title>
     <style>
-      html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
-      canvas { display: block; }
+      /* touch-action: none stops the browser from claiming drags for scroll/zoom — */
+      /* essential, or the virtual joystick + camera drag fight the page. */
+      html, body {
+        margin: 0;
+        height: 100%;
+        background: #000;
+        overflow: hidden;
+        touch-action: none;
+        user-select: none;
+        -webkit-user-select: none;
+        -webkit-tap-highlight-color: transparent;
+      }
+      canvas { display: block; touch-action: none; }
     </style>
   </head>
   <body>
+    <script>
+      // TEMP mobile debug console: open the page with ?debug to get an on-screen console
+      // (phones have no DevTools). Tap the floating gear → Console tab to read errors.
+      // Remove this block once mobile is sorted.
+      if (location.search.includes("debug")) {
+        const s = document.createElement("script");
+        s.src = "https://cdn.jsdelivr.net/npm/eruda";
+        s.onload = () => window.eruda && window.eruda.init();
+        document.head.appendChild(s);
+      }
+    </script>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>
