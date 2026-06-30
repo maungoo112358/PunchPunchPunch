@@ -56,7 +56,7 @@ function buildChunkGeometry() {
 // Move + repopulate a chunk to world coordinate (cx, cz). Blade positions are
 // stored in WORLD space (mesh stays at origin), so the wind shader samples world
 // coords directly and the field never visibly tiles.
-function assignChunk(chunk, cx, cz, path) {
+function assignChunk(chunk, cx, cz) {
   chunk.cx = cx;
   chunk.cz = cz;
   const ox = cx * CHUNK_SIZE;
@@ -75,10 +75,8 @@ function assignChunk(chunk, cx, cz, path) {
     aPos.array[i * 3 + 1] = 0;
     aPos.array[i * 3 + 2] = bz;
     aRot.array[i] = rng() * Math.PI * 2;
-    // Always consume the height RNG (keeps layouts deterministic), but zero it out for
-    // blades on the path so the strip reads as bare ground.
     const h = 0.9 + rng() * 0.6; // ~0.9..1.5 tall
-    aHt.array[i] = path && path.onPath(bx, bz) ? 0 : h;
+    aHt.array[i] = h;
     aPh.array[i] = rng() * Math.PI * 2;
   }
   aPos.needsUpdate = true;
@@ -187,7 +185,7 @@ const fragmentShader = /* glsl */ `
   }
 `;
 
-export function addGrass(scene, target, path) {
+export function addGrass(scene, target) {
   // One material shared by every chunk (blade positions carry their own world pos).
   const material = new THREE.ShaderMaterial({
     uniforms: {
@@ -206,7 +204,7 @@ export function addGrass(scene, target, path) {
       uSunDir: { value: new THREE.Vector3(3, 4, 5).normalize() },
       uSunColor: { value: new THREE.Color(COLORS.SUN) },
       uSkyColor: { value: new THREE.Color(COLORS.SKY) },
-      uAmbientStrength: { value: 0.5 }, // blue sky fill raised so the night blue bleeds in
+      uAmbientStrength: { value: 0.35 }, // pulled back so green albedo wins; blue ambient only cools shadows
       uSunStrength: { value: 0.6 }, // cool moonlight key lowered so ambient dominates
       uTipGlow: { value: 0.12 },
       // Fog uniforms — the renderer auto-updates these from scene.fog because fog:true.
@@ -262,7 +260,7 @@ export function addGrass(scene, target, path) {
       let chunk = active.get(d.key);
       if (!chunk) {
         chunk = free.pop();
-        assignChunk(chunk, d.cx, d.cz, path); // only newly-entered chunks repopulate
+        assignChunk(chunk, d.cx, d.cz); // only newly-entered chunks repopulate
         active.set(d.key, chunk);
       }
       chunk.geo.instanceCount = Math.floor(BLADES_PER_CHUNK * lodFraction(d.ring));

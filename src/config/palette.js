@@ -16,12 +16,13 @@ export const COLORS = {
   // --- World ---
   GROUND:        0x1a2117, // #1a2117  near-black cool soil     — world/ground.js plane (hides gaps)
   PATH:          0xd2c581, // #d2c581  warm cream sand          — reserved for future paths
-  BACKGROUND:    0x222c63, // #222c63  deep twilight navy       — scene background + fog
+  BACKGROUND:    0x2c2d44, // #2c2d44  muted dusk slate (less blue) — scene background + fog
 
   // --- Grass (world/grass.js shader) ---
-  GRASS_BASE:    0x1f343f, // #1f343f  dark cool teal (root)    — deep blue-green shadow
-  GRASS_TIP:     0x5a93a0, // #5a93a0  moonlit teal-blue (tip)  — cool light catching the tops
+  // Green grass against the blue fog = warm/cool contrast; near reads green, far melts to fog.
+  GRASS_BASE:    0x20331f, // #20331f  dark forest green (root) — deep, slightly cool shadow
+  GRASS_TIP:     0x7ba85f, // #7ba85f  moonlit yellow-green (tip) — leans yellow to read green vs navy
 
-  // --- Props (world/props.js) ---
-  LEAF:          0x5e8a72, // #5e8a72  cool teal-green tint     — cools the bright daytime tree leaves into the twilight
+  // --- Props (parked — future MegaKit foliage) ---
+  LEAF:          0x5e8a72, // #5e8a72  cool teal-green tint     — cools bright daytime leaves into twilight
 };

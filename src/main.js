@@ -6,8 +6,6 @@ import { addLights } from "./world/lights.js";
 import { addGround } from "./world/ground.js";
 import { addGrass } from "./world/grass.js";
 import { addHeroLight } from "./world/heroLight.js";
-import { addProps } from "./world/props.js";
-import { createPath } from "./world/path.js";
 import { Character } from "./entities/Character.js";
 import { createInput } from "./systems/input.js";
 import { createPlayerController } from "./systems/playerController.js";
@@ -33,14 +31,12 @@ scene.add(camera);
 const { sun } = addLights(scene);
 addGround(scene);
 addHeroLight(camera); // warm fill on the character, follows the view
-addProps(scene); // SPIKE: one tree off-center to judge scale + lighting
-const path = createPath(scene); // winding dirt footpath; grass carves itself around it
 
 // --- Entities ---------------------------------------------------------------
 const character = new Character(scene, "/models/Wizard.gltf");
 
 // Grass follows the character, so it needs a reference to it.
-const grass = addGrass(scene, character, path);
+const grass = addGrass(scene, character);
 
 // --- Systems ----------------------------------------------------------------
 const input = createInput();
