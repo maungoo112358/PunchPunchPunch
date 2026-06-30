@@ -1,8 +1,8 @@
 import * as THREE from "three";
 
-// PerspectiveCamera(fov, aspect, near, far) — defines the view frustum.
-// TEMPORARY elevated 3/4 view (~45° down) so the ground is visible, not edge-on.
-// Grows into the PoE2 fixed-angle follow rig in Task 5.
+// PerspectiveCamera(fov, aspect, near, far) defines the view frustum.
+// Temporary elevated 3/4 view (~45 deg down) so the ground isn't edge-on.
+// Becomes the fixed-angle follow rig in Task 5.
 export function createCamera() {
   const camera = new THREE.PerspectiveCamera(
     60, // vertical FOV in degrees

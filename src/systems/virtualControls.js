@@ -1,9 +1,9 @@
-// On-screen controls for TOUCH devices: a fixed bottom-center JOYSTICK (move) and a
-// look-drag everywhere else (look). Portrait is fine. Built only when a touch device is
-// detected — on desktop this is inert, so keyboard/mouse stay in charge. Manages its own
-// DOM overlay (≈ a Unity uGUI canvas), never the WebGL loop.
-const RADIUS = 60; // px — joystick max travel from its center
-const DEADZONE = 0.18; // ignore tiny thumb wobble (below this → no movement, no Run)
+// On-screen controls for touch devices: fixed bottom-center joystick (move) and look-drag
+// everywhere else (look). Built only when a touch device is detected; inert on desktop so
+// keyboard/mouse stay in charge. Manages its own DOM overlay (~ a Unity uGUI canvas), not the
+// WebGL loop.
+const RADIUS = 60; // px, joystick max travel from center
+const DEADZONE = 0.18; // ignore tiny thumb wobble (below this = no move, no Run)
 const ANCHOR_BOTTOM = 110; // px the stick center sits above the bottom edge
 const GRAB_RADIUS = 130; // a touch within this of the stick center grabs it
 
@@ -31,7 +31,7 @@ export function createVirtualControls() {
     };
   }
 
-  // --- full-screen touch overlay ---
+  // full-screen touch overlay
   const root = document.createElement("div");
   Object.assign(root.style, {
     position: "fixed",
@@ -40,8 +40,8 @@ export function createVirtualControls() {
     touchAction: "none",
   });
 
-  // Joystick visuals — always visible, pinned bottom-center. pointerEvents:none so the root
-  // is the single touch target (stick/look touches keep e.target === root).
+  // Joystick visuals, pinned bottom-center. pointerEvents:none so the root stays the single
+  // touch target (stick/look touches keep e.target === root).
   const base = document.createElement("div");
   Object.assign(base.style, {
     position: "fixed",
@@ -71,7 +71,7 @@ export function createVirtualControls() {
   root.appendChild(knob);
   document.body.appendChild(root);
 
-  // --- stick geometry (recomputed on demand; survives resize/rotate) ---
+  // stick geometry (recomputed on demand; survives resize/rotate)
   function centerX() {
     return window.innerWidth / 2;
   }

@@ -1,9 +1,8 @@
 import * as THREE from "three";
 
-// Keeps the sun (and therefore its ORTHOGRAPHIC shadow camera, bounded to ±10 in
-// lights.js) centered on the target, so the shadow box travels with the character
-// instead of being left behind once he walks past the origin. The offset is constant,
-// so the shadow always falls in the same screen direction.
+// Keeps the sun (and its orthographic shadow camera, bounded to +/-10 in lights.js) centered on
+// the target, so the shadow box travels with the character. Constant offset keeps the shadow
+// falling in the same screen direction.
 const SUN_OFFSET = new THREE.Vector3(5, 5, 4); // mid-morning angle (match lights.js + grass uSunDir)
 
 export function createSunFollow(sun, target) {
@@ -13,7 +12,7 @@ export function createSunFollow(sun, target) {
       const p = target.model.position;
       sun.position.copy(p).add(SUN_OFFSET);
       sun.target.position.copy(p);
-      sun.target.updateMatrixWorld(); // target drives the shadow camera's aim
+      sun.target.updateMatrixWorld(); // target drives the shadow camera aim
     },
   };
 }

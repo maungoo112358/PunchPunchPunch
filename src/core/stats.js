@@ -1,6 +1,6 @@
 import Stats from "three/addons/libs/stats.module.js";
 
-// FPS / frame-time panel (top-left). stats.update() ticks once per frame.
+// FPS / frame-time panel (top-left). update() ticks once per frame.
 export function createStats() {
   const stats = new Stats();
   stats.dom.style.left = "0px";

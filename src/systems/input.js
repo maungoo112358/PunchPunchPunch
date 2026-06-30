@@ -1,20 +1,20 @@
 import * as THREE from "three";
 import { createVirtualControls } from "./virtualControls.js";
 
-// Input aggregator: fills source-agnostic CHANNELS from every device, so the rest of the
-// game never sees a key or a touch. Channels:
-//   move — Vector3 intent; MAGNITUDE encodes speed (keyboard: 1 = Run, Shift = Walk;
-//          joystick: analog push depth). x = strafe, z = forward.
-//   look — per-frame drag delta (mouse LEFT-drag + touch drag).
+// Input aggregator: fills source-agnostic channels from every device, so the rest of the game
+// never sees a key or a touch. Channels:
+//   move: Vector3 intent; magnitude = speed (keyboard 1 = Run, Shift = Walk; joystick push
+//         depth). x = strafe, z = forward.
+//   look: per-frame drag delta (mouse left-drag + touch drag).
 const WALK_SCALE = 0.5; // keyboard speed while Shift held (default Run = 1.0)
 
 export function createInput() {
-  // --- keyboard: move + Shift-walk ---
+  // keyboard: move + Shift-walk
   const keys = new Set();
   window.addEventListener("keydown", (e) => keys.add(e.code));
   window.addEventListener("keyup", (e) => keys.delete(e.code));
 
-  // --- mouse: LEFT-drag = camera look ---
+  // mouse: left-drag = camera look
   let dragging = false;
   let mouseX = 0;
   let mouseY = 0;
@@ -31,14 +31,14 @@ export function createInput() {
     }
   });
 
-  // --- touch controls (joystick + look; inert on desktop) ---
+  // touch controls (joystick + look; inert on desktop)
   const touch = createVirtualControls();
 
   const intent = new THREE.Vector3(); // reused
   const look = { x: 0, y: 0 }; // reused
 
   return {
-    // Magnitude-encoded move. Keyboard wins (Run, or Walk while Shift); else the analog stick.
+    // Magnitude-encoded move. Keyboard wins (Run, or Walk while Shift), else the analog stick.
     getDirection() {
       let x = 0;
       let z = 0;
@@ -52,12 +52,12 @@ export function createInput() {
         intent.set(x, 0, z).normalize().multiplyScalar(scale);
         return intent;
       }
-      const m = touch.getMove(); // analog (≤1): push depth → Walk/Run
+      const m = touch.getMove(); // analog (<=1): push depth = Walk/Run
       intent.set(m.x, 0, m.z);
       return intent;
     },
 
-    // Merged drag delta (mouse + touch), then resets. Camera reads once per frame.
+    // Merged drag delta (mouse + touch), then reset. Camera reads once per frame.
     consumeLook() {
       const t = touch.consumeLook();
       look.x = mouseX + t.x;
