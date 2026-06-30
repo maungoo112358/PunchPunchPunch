@@ -2,9 +2,12 @@
 // Values are 0x hex (what Three.js wants); the #hex in comments is the same color
 // for designer tools. Named by ROLE, not by hue.
 //
-// MOOD: cozy forest MORNING — HYBRID (warm golden light of #1 + soft blue sky of #3).
-// Warm gold sun + cool blue sky fill; blue sky above, warm pale haze glowing at the horizon.
-// Sky (BACKGROUND) and fog (FOG) are DECOUPLED so the horizon can glow warm under a blue sky.
+// MOOD (LOCKED): cozy forest MORNING — warm gold sun, soft sky fill, warm pale haze glowing at the
+// horizon and climbing to soft blue overhead. Sky (BACKGROUND) + fog (FOG) are decoupled.
+// COLOR PIPELINE — IMPORTANT: the haze is shared by the grass fog + the gradient sky (world/sky.js)
+// as a RAW sRGB color (see srgb() below), blended LAST in both shaders so they match EXACTLY. Do NOT
+// route the haze through tonemapping/colorspace — that shifted it (khaki / white blowout) and broke
+// the grass↔sky match. Tune FOG/BACKGROUND freely; the result is now predictable (= the hex you set).
 
 export const COLORS = {
   // --- Lighting (world/lights.js) ---

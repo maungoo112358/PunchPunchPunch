@@ -4,12 +4,19 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 // One shared loader instance is fine for all characters.
 const loader = new GLTFLoader();
 
+// Reused scratch for orient() so we don't allocate every frame.
+const _fwd = new THREE.Vector3();
+const _right = new THREE.Vector3();
+const _basis = new THREE.Matrix4();
+const _targetQuat = new THREE.Quaternion();
+
 // An animated character ≈ a Unity GameObject with an Animator.
 // Loading is ASYNC, so model/mixer start null and methods no-op until ready.
 // Arrow callbacks keep `this` bound to the instance.
 export class Character {
-  constructor(scene, modelUrl) {
+  constructor(scene, modelUrl, spawn = null) {
     this.scene = scene;
+    this.spawn = spawn; // optional world spawn position, applied once the model loads (async)
     this.model = null; // glTF root once loaded
     this.mixer = null; // AnimationMixer ≈ Unity Animator
     this.actions = {}; // name -> AnimationAction (pre-built for crossfading)
@@ -33,6 +40,7 @@ export class Character {
         obj.receiveShadow = true;
       }
     });
+    if (this.spawn) model.position.copy(this.spawn); // place on the surface (origin would bury it inside the planet)
     this.scene.add(model);
     this.model = model;
 
@@ -60,14 +68,21 @@ export class Character {
     this.current = name;
   }
 
-  // Smoothly rotate the model to face a world-XZ direction (normalized).
-  // Model forward is +Z at yaw 0, so target yaw = atan2(dir.x, dir.z).
-  faceDirection(dir, dt) {
+  // Orient the model on the curved surface: stand its local +Y up along the surface normal
+  // (`up`) and face its local +Z along `forward`. Both are world-space; `forward` need not be
+  // perpendicular to `up` — we flatten it into the tangent plane here. Slerps toward the target
+  // so turning + tilting (as the ground curves underfoot) are both smooth. Replaces the old
+  // flat-world rotation.y because "facing" on a sphere is a full orientation, not one angle.
+  orient(up, forward, dt) {
     if (!this.model) return;
-    const target = Math.atan2(dir.x, dir.z);
-    let delta = target - this.model.rotation.y;
-    delta = Math.atan2(Math.sin(delta), Math.cos(delta)); // shortest path, wrapped to [-pi,pi]
-    this.model.rotation.y += delta * Math.min(1, this.turnSpeed * dt);
+    // Flatten forward into the tangent plane (remove any component along up), then normalize.
+    _fwd.copy(forward).addScaledVector(up, -forward.dot(up));
+    if (_fwd.lengthSq() < 1e-8) return; // forward ~parallel to up → no valid heading, skip
+    _fwd.normalize();
+    _right.crossVectors(up, _fwd).normalize(); // local +X = up × forward (right-handed: X×Y=Z=forward)
+    _basis.makeBasis(_right, up, _fwd); // columns: +X, +Y, +Z
+    _targetQuat.setFromRotationMatrix(_basis);
+    this.model.quaternion.slerp(_targetQuat, Math.min(1, this.turnSpeed * dt));
   }
 
   // Called every frame ≈ Update(). dt = seconds since last frame.
