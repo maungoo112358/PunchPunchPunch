@@ -2,25 +2,22 @@ import * as THREE from "three";
 import { COLORS, srgb } from "../config/palette.js";
 
 // ---------------------------------------------------------------------------
-// CHUNKED GPU grass. The world is a grid of square chunks; we keep a (2R+1)^2
-// grid centered on the player and recycle chunks as he moves (object pooling).
-// Each chunk is its own frustum-culled mesh (off-screen chunks cost nothing),
-// and distant chunks draw fewer blades (LOD). Wind + lighting shaders unchanged.
+// WHOLE-SPHERE GPU grass (planet version). The old flat field streamed square
+// XZ chunks around the player; a tiny planet is FINITE, so instead we scatter
+// every blade over the whole sphere ONCE (no streaming, no recycling) and let
+// the opaque planet depth-occlude the back hemisphere for free.
+//
+// The core change from flat: every blade has its OWN up — its surface normal —
+// so the blade is built in a per-blade tangent frame (T, B, N) derived in the
+// vertex shader from the blade's base position. Wind + player-parting are redone
+// in that surface-local frame. The color/haze fragment pipeline is UNCHANGED
+// (the locked cozy-morning look). (Patch-level frustum culling = a later pass.)
 // ---------------------------------------------------------------------------
 
-const CHUNK_SIZE = 12; // world units per chunk tile
-const GRID_RADIUS = 3; // chunks each side of the player → (2R+1)^2 = 49 chunks
-const BLADES_PER_CHUNK = 10000; // full-density capacity per chunk
+const BLADE_COUNT = 250000; // total blades over the whole sphere (front ~half visible); tune by eye + FPS
+const BLADE_JITTER = 0.13; // random tangent offset so the Fibonacci spiral doesn't read as a lattice
 
-// LOD: fraction of a chunk's blades to draw, by ring distance from the player.
-function lodFraction(ring) {
-  if (ring <= 1) return 1.0; // near: full density
-  if (ring === 2) return 0.5; // mid
-  return 0.25; // far: sparse (tiny on screen, invisible)
-}
-
-// Tiny seeded RNG so each chunk's layout is deterministic from its coordinate
-// (stable if the player walks back to it) and chunks don't look identical.
+// Tiny seeded RNG so the layout is deterministic (stable across reloads).
 function mulberry32(seed) {
   let a = seed >>> 0;
   return function () {
@@ -32,63 +29,71 @@ function mulberry32(seed) {
 }
 
 // One blade, height baked to 1.0 (so local y == height fraction), 3 segments.
+// x = width (±), y = height (0..1). Built into the surface frame in the shader.
 const BLADE_POSITIONS = new Float32Array([
   -0.05, 0.0, 0.0, 0.05, 0.0, 0.0, -0.04, 0.33, 0.0, 0.04, 0.33, 0.0, -0.025,
   0.66, 0.0, 0.025, 0.66, 0.0, 0.0, 1.0, 0.0,
 ]);
 const BLADE_INDICES = [0, 1, 2, 2, 1, 3, 2, 3, 4, 4, 3, 5, 4, 5, 6];
 
-// Allocate a chunk geometry (instance buffers empty until assigned to a coord).
-function buildChunkGeometry() {
+// Scatter blade bases over the sphere with a Fibonacci (golden-spiral) distribution:
+// deterministic and near-uniform with no pole pinch (lat/long would clump at the poles).
+function buildGrassGeometry(radius) {
   const geo = new THREE.InstancedBufferGeometry();
   geo.setAttribute("position", new THREE.BufferAttribute(BLADE_POSITIONS, 3));
   geo.setIndex(BLADE_INDICES);
-  geo.setAttribute("aPosition", new THREE.InstancedBufferAttribute(new Float32Array(BLADES_PER_CHUNK * 3), 3));
-  geo.setAttribute("aRotation", new THREE.InstancedBufferAttribute(new Float32Array(BLADES_PER_CHUNK), 1));
-  geo.setAttribute("aHeight", new THREE.InstancedBufferAttribute(new Float32Array(BLADES_PER_CHUNK), 1));
-  geo.setAttribute("aPhase", new THREE.InstancedBufferAttribute(new Float32Array(BLADES_PER_CHUNK), 1));
-  // Set the bounding sphere ourselves (covers the tile) so Three frustum-culls the
-  // whole chunk instead of computing a tiny sphere from the base blade.
-  geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), CHUNK_SIZE * 0.9);
+
+  const aBase = new Float32Array(BLADE_COUNT * 3);
+  const aRotation = new Float32Array(BLADE_COUNT);
+  const aHeight = new Float32Array(BLADE_COUNT);
+  const aPhase = new Float32Array(BLADE_COUNT);
+
+  const rng = mulberry32(0xc0ffee);
+  const golden = Math.PI * (3 - Math.sqrt(5)); // ~2.3999 rad between consecutive points
+  const dir = new THREE.Vector3();
+  const t1 = new THREE.Vector3();
+  const t2 = new THREE.Vector3();
+  const ref = new THREE.Vector3();
+  const base = new THREE.Vector3();
+
+  for (let i = 0; i < BLADE_COUNT; i++) {
+    const y = 1 - ((i + 0.5) / BLADE_COUNT) * 2; // +1 (top) → -1 (bottom)
+    const r = Math.sqrt(Math.max(0, 1 - y * y));
+    const theta = golden * i;
+    dir.set(Math.cos(theta) * r, y, Math.sin(theta) * r); // unit direction on the sphere
+
+    // Jitter within the local tangent plane so the spiral lattice disappears, then re-seat at radius.
+    ref.set(0, 1, 0);
+    if (Math.abs(dir.y) > 0.99) ref.set(1, 0, 0); // avoid a degenerate cross near the poles
+    t1.crossVectors(ref, dir).normalize();
+    t2.crossVectors(dir, t1); // already unit (dir ⊥ t1)
+    base
+      .copy(dir)
+      .multiplyScalar(radius)
+      .addScaledVector(t1, (rng() * 2 - 1) * BLADE_JITTER)
+      .addScaledVector(t2, (rng() * 2 - 1) * BLADE_JITTER)
+      .setLength(radius); // snap back onto the surface
+
+    aBase[i * 3 + 0] = base.x;
+    aBase[i * 3 + 1] = base.y;
+    aBase[i * 3 + 2] = base.z;
+    aRotation[i] = rng() * Math.PI * 2;
+    aHeight[i] = 0.9 + rng() * 0.6; // ~0.9..1.5 tall
+    aPhase[i] = rng() * Math.PI * 2;
+  }
+
+  geo.setAttribute("aBase", new THREE.InstancedBufferAttribute(aBase, 3));
+  geo.setAttribute("aRotation", new THREE.InstancedBufferAttribute(aRotation, 1));
+  geo.setAttribute("aHeight", new THREE.InstancedBufferAttribute(aHeight, 1));
+  geo.setAttribute("aPhase", new THREE.InstancedBufferAttribute(aPhase, 1));
+
+  // The whole field is one static mesh covering the planet; bound it to the planet + tallest blade.
+  geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), radius + 2);
   return geo;
 }
 
-// Move + repopulate a chunk to world coordinate (cx, cz). Blade positions are
-// stored in WORLD space (mesh stays at origin), so the wind shader samples world
-// coords directly and the field never visibly tiles.
-function assignChunk(chunk, cx, cz) {
-  chunk.cx = cx;
-  chunk.cz = cz;
-  const ox = cx * CHUNK_SIZE;
-  const oz = cz * CHUNK_SIZE;
-  const rng = mulberry32((Math.imul(cx, 73856093) ^ Math.imul(cz, 19349663)) >>> 0);
-
-  const geo = chunk.geo;
-  const aPos = geo.attributes.aPosition;
-  const aRot = geo.attributes.aRotation;
-  const aHt = geo.attributes.aHeight;
-  const aPh = geo.attributes.aPhase;
-  for (let i = 0; i < BLADES_PER_CHUNK; i++) {
-    const bx = ox + rng() * CHUNK_SIZE;
-    const bz = oz + rng() * CHUNK_SIZE;
-    aPos.array[i * 3 + 0] = bx;
-    aPos.array[i * 3 + 1] = 0;
-    aPos.array[i * 3 + 2] = bz;
-    aRot.array[i] = rng() * Math.PI * 2;
-    const h = 0.9 + rng() * 0.6; // ~0.9..1.5 tall
-    aHt.array[i] = h;
-    aPh.array[i] = rng() * Math.PI * 2;
-  }
-  aPos.needsUpdate = true;
-  aRot.needsUpdate = true;
-  aHt.needsUpdate = true;
-  aPh.needsUpdate = true;
-
-  geo.boundingSphere.center.set(ox + CHUNK_SIZE / 2, 1, oz + CHUNK_SIZE / 2);
-}
-
 const vertexShader = /* glsl */ `
-  attribute vec3 aPosition; // WORLD position of this blade's base
+  attribute vec3 aBase;     // WORLD position of this blade's base (on the sphere surface)
   attribute float aRotation;
   attribute float aHeight;
   attribute float aPhase;
@@ -97,53 +102,63 @@ const vertexShader = /* glsl */ `
   varying vec3 vNormal;
 
   uniform float uTime;
-  uniform vec2 uWindDir;
+  uniform vec3 uWindDir;        // world-space wind; projected into each blade's tangent plane
   uniform float uWindFrequency;
   uniform float uWindAmplitude;
   uniform float uWindScale;
   uniform float uGustFrequency;
   uniform float uGustScale;
 
-  uniform vec3 uPlayerPos; // character world position
-  uniform float uPlayerRadius; // how far the parting reaches
-  uniform float uPlayerStrength; // how far blades bend away
+  uniform vec3 uPlayerPos;      // character world position
+  uniform float uPlayerRadius;  // how far the parting reaches
+  uniform float uPlayerStrength;// how far blades bend away
 
   #include <fog_pars_vertex>
 
   void main() {
     vHeight = position.y; // base geom height is 1.0, so y IS the height fraction
 
-    vec3 pos = position;
-    pos.y *= aHeight;
+    // PER-BLADE SURFACE FRAME (T, B, N) derived from the base — this is the whole sphere port.
+    vec3 N = normalize(aBase); // this blade's up = surface normal
+    vec3 ref = abs(N.y) < 0.99 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0); // flips near the poles
+    vec3 T = normalize(cross(ref, N));
+    vec3 B = cross(N, T);
 
+    // Spin the blade in its tangent plane: widthAxis widens it, faceAxis is the card's facing.
     float s = sin(aRotation);
     float c = cos(aRotation);
-    vec3 spun = vec3(pos.x * c + pos.z * s, pos.y, -pos.x * s + pos.z * c);
+    vec3 widthAxis = T * c + B * s;
+    vec3 faceAxis = -T * s + B * c;
 
-    vNormal = normalize(vec3(s, 0.6, c)); // up-biased blade normal for sun shading
+    // Build the blade: width along widthAxis, height along the surface normal.
+    vec3 worldPos = aBase + widthAxis * position.x + N * (position.y * aHeight);
 
-    vec3 worldPos = spun + aPosition;
+    // Stylized lighting normal: card normal biased toward the surface up (soft, up-lit look).
+    vNormal = normalize(faceAxis * 0.8 + N * 0.6);
 
-    // WIND: two sine octaves + a slow gust envelope, scaled by vHeight (root planted).
+    // WIND: project the world wind into this blade's tangent plane, bend the tip along it.
+    // Two sine octaves + a slow gust envelope, scaled by vHeight so the root stays planted.
+    vec3 windT = uWindDir - N * dot(uWindDir, N);
+    windT = normalize(windT + 1e-4 * T); // guard if wind ~parallel to N
+    float spatial = aBase.x + aBase.y + aBase.z; // smoothly varies over the sphere (no tiling)
     float t = uTime * uWindFrequency;
-    float wave1 = sin(t + (worldPos.x + worldPos.z) * uWindScale + aPhase);
-    float wave2 = sin(t * 1.7 + (worldPos.x * 0.7 - worldPos.z * 1.3) * uWindScale * 2.0 + aPhase * 1.3);
+    float wave1 = sin(t + spatial * uWindScale + aPhase);
+    float wave2 = sin(t * 1.7 + dot(aBase, vec3(0.7, -1.3, 0.5)) * uWindScale * 2.0 + aPhase * 1.3);
     float wave = wave1 * 0.7 + wave2 * 0.3;
-    float gust = 0.6 + 0.4 * sin(uTime * uGustFrequency + (worldPos.x + worldPos.z) * uGustScale);
+    float gust = 0.6 + 0.4 * sin(uTime * uGustFrequency + spatial * uGustScale);
     float bend = wave * gust * uWindAmplitude * vHeight;
-    worldPos.x += bend * uWindDir.x;
-    worldPos.z += bend * uWindDir.y;
+    worldPos += windT * bend;
 
-    // PLAYER DISPLACEMENT: blades within radius bend AWAY from the character. Scaled
-    // by vHeight so roots stay planted and tips part; a little press-down underfoot.
-    vec2 toBlade = worldPos.xz - uPlayerPos.xz;
+    // PLAYER PARTING: blades within radius bend AWAY along the tangent, tips part, slight press-down.
+    vec3 toBlade = aBase - uPlayerPos;
     float pdist = length(toBlade);
     float influence = 1.0 - smoothstep(0.0, uPlayerRadius, pdist); // 1 near → 0 at radius
-    vec2 pushDir = pdist > 0.001 ? toBlade / pdist : vec2(0.0);
+    vec3 pushDir = toBlade - N * dot(toBlade, N); // flatten into the tangent plane
+    float pl = length(pushDir);
+    pushDir = pl > 0.001 ? pushDir / pl : vec3(0.0);
     float push = influence * uPlayerStrength * vHeight;
-    worldPos.x += pushDir.x * push;
-    worldPos.z += pushDir.y * push;
-    worldPos.y -= push * 0.35; // slight trample/flatten near his feet
+    worldPos += pushDir * push;
+    worldPos -= N * (push * 0.35); // trample/flatten near his feet
 
     vec4 mvPosition = modelViewMatrix * vec4(worldPos, 1.0);
     gl_Position = projectionMatrix * mvPosition;
@@ -152,6 +167,7 @@ const vertexShader = /* glsl */ `
   }
 `;
 
+// Fragment shader — UNCHANGED from the flat field (the locked cozy-morning look).
 const fragmentShader = /* glsl */ `
   uniform vec3 uBaseColor;
   uniform vec3 uTipColor;
@@ -182,22 +198,20 @@ const fragmentShader = /* glsl */ `
     gl_FragColor = vec4(color, 1.0);
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
-    // Haze blended LAST, in display space, toward a raw sRGB color — so the far grass ends at the
-    // EXACT same on-screen color as the sky horizon (uHazeColor == sky uHorizon). No tone-map shift,
-    // no linear khaki, no white blowout. (fogNear/fogFar/vFogDepth are provided by fog:true.)
+    // Haze blended LAST, in display space, toward a raw sRGB color — far grass ends at the EXACT
+    // same on-screen color as the sky horizon (uHazeColor == sky uHorizon). No tone-map shift.
     float fogFactor = smoothstep(fogNear, fogFar, vFogDepth);
     gl_FragColor.rgb = mix(gl_FragColor.rgb, uHazeColor, fogFactor);
   }
 `;
 
-export function addGrass(scene, target) {
-  // One material shared by every chunk (blade positions carry their own world pos).
+export function addGrass(scene, target, planet) {
   const material = new THREE.ShaderMaterial({
     uniforms: {
       uBaseColor: { value: new THREE.Color(COLORS.GRASS_BASE) },
       uTipColor: { value: new THREE.Color(COLORS.GRASS_TIP) },
       uTime: { value: 0 },
-      uWindDir: { value: new THREE.Vector2(1, 0.3).normalize() },
+      uWindDir: { value: new THREE.Vector3(1, 0, 0.3).normalize() }, // world wind; projected per blade
       uWindFrequency: { value: 1.2 },
       uWindAmplitude: { value: 0.2 },
       uWindScale: { value: 0.3 },
@@ -209,9 +223,9 @@ export function addGrass(scene, target) {
       uSunDir: { value: new THREE.Vector3(5, 5, 4).normalize() }, // mid-morning angle (match lights.js + sunFollow)
       uSunColor: { value: new THREE.Color(COLORS.SUN) },
       uSkyColor: { value: new THREE.Color(COLORS.SKY) },
-      uAmbientStrength: { value: 0.5 }, // soft blue sky fill balances the warm sun
-      uSunStrength: { value: 0.8 }, // warm directional, slightly gentler
-      uTipGlow: { value: 0.22 }, // warm rim on the tips, eased back
+      uAmbientStrength: { value: 0.5 },
+      uSunStrength: { value: 0.8 },
+      uTipGlow: { value: 0.22 },
       uHazeColor: { value: new THREE.Vector3(...srgb(COLORS.FOG)) }, // raw sRGB haze — matches sky horizon
       // Fog uniforms — fogNear/fogFar auto-update from scene.fog because fog:true (we do our own blend).
       fogColor: { value: new THREE.Color() },
@@ -224,73 +238,15 @@ export function addGrass(scene, target) {
     fog: true,
   });
 
-  // Build the chunk pool.
-  const pool = [];
-  const total = (GRID_RADIUS * 2 + 1) ** 2;
-  for (let i = 0; i < total; i++) {
-    const geo = buildChunkGeometry();
-    const mesh = new THREE.Mesh(geo, material); // mesh stays at origin; positions are world-space
-    mesh.frustumCulled = true; // off-screen chunks are skipped
-    scene.add(mesh);
-    pool.push({ mesh, geo, cx: null, cz: null });
-  }
-
-  const active = new Map(); // "cx,cz" -> chunk
-  const free = [...pool]; // chunks available for assignment (starts as the whole pool)
-  let lastPcx = null;
-  let lastPcz = null;
-
-  // Re-center the grid on the player's chunk: free chunks that left the grid,
-  // reassign them to newly-needed coords, and set each chunk's LOD by ring.
-  function refreshGrid(pcx, pcz) {
-    const needed = new Set();
-    const desired = [];
-    for (let dz = -GRID_RADIUS; dz <= GRID_RADIUS; dz++) {
-      for (let dx = -GRID_RADIUS; dx <= GRID_RADIUS; dx++) {
-        const cx = pcx + dx;
-        const cz = pcz + dz;
-        const key = cx + "," + cz;
-        needed.add(key);
-        desired.push({ cx, cz, key, ring: Math.max(Math.abs(dx), Math.abs(dz)) });
-      }
-    }
-
-    for (const [key, chunk] of active) {
-      if (!needed.has(key)) {
-        active.delete(key);
-        free.push(chunk); // return chunks that left the grid to the pool
-      }
-    }
-
-    for (const d of desired) {
-      let chunk = active.get(d.key);
-      if (!chunk) {
-        chunk = free.pop();
-        assignChunk(chunk, d.cx, d.cz); // only newly-entered chunks repopulate
-        active.set(d.key, chunk);
-      }
-      chunk.geo.instanceCount = Math.floor(BLADES_PER_CHUNK * lodFraction(d.ring));
-    }
-  }
-
-  // Seed the grid around the origin so grass shows before the model loads.
-  refreshGrid(0, 0);
-  lastPcx = 0;
-  lastPcz = 0;
+  const geo = buildGrassGeometry(planet.radius);
+  const mesh = new THREE.Mesh(geo, material);
+  scene.add(mesh);
 
   return {
     update(dt) {
       material.uniforms.uTime.value += dt;
       if (target && target.model) {
-        const p = target.model.position;
-        material.uniforms.uPlayerPos.value.copy(p); // grass parts around him
-        const pcx = Math.floor(p.x / CHUNK_SIZE);
-        const pcz = Math.floor(p.z / CHUNK_SIZE);
-        if (pcx !== lastPcx || pcz !== lastPcz) {
-          refreshGrid(pcx, pcz); // only on chunk-boundary crossings
-          lastPcx = pcx;
-          lastPcz = pcz;
-        }
+        material.uniforms.uPlayerPos.value.copy(target.model.position); // grass parts around him
       }
     },
   };

@@ -13,7 +13,7 @@ import { COLORS } from "../config/palette.js";
 // "gravity" here just means SNAP a position to the surface + orient up to the normal (kinematic).
 
 const PLANET_RADIUS = 28; // gentle "crest of a hill" curve (Messenger-style), not a tight marble; tune to taste
-const PLANET_DETAIL = 3; // icosphere subdivisions: higher = rounder silhouette, fewer visible facets
+const PLANET_DETAIL = 11; // icosphere subdivisions: higher = rounder silhouette, fewer visible facets
 
 export function createPlanet(scene) {
   const center = new THREE.Vector3(0, 0, 0);

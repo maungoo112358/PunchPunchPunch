@@ -5,7 +5,7 @@ import { createStats } from "./core/stats.js";
 import { addLights } from "./world/lights.js";
 import { createPlanet } from "./world/planet.js";
 import { addSky } from "./world/sky.js";
-// import { addGrass } from "./world/grass.js"; // TASK 3: flat XZ chunk-streamer, rebuilt for the sphere
+import { addGrass } from "./world/grass.js";
 import { addHeroLight } from "./world/heroLight.js";
 import { Character } from "./entities/Character.js";
 import { createInput } from "./systems/input.js";
@@ -43,7 +43,8 @@ addHeroLight(camera); // warm fill on the character, follows the view
 const spawn = new THREE.Vector3(0, planet.radius, 0);
 const character = new Character(scene, "/models/Wizard.gltf", spawn);
 
-// const grass = addGrass(scene, character); // TASK 3: rebuild as whole-sphere scatter (flat version slices the planet)
+// Grass scattered over the whole planet; needs the character (parting) + planet (radius/normals).
+const grass = addGrass(scene, character, planet);
 
 // --- Systems ----------------------------------------------------------------
 const input = createInput();
@@ -55,7 +56,7 @@ const stats = createStats();
 // --- Update registry --------------------------------------------------------
 // Each entry's update(dt) is ticked every frame — this array IS the Unity update
 // loop. Order: drive the character first, then the camera/shadow track its new pos.
-const updatables = [controller, character, cameraFollow, sunFollow, sky, stats];
+const updatables = [controller, character, cameraFollow, sunFollow, sky, grass, stats];
 
 const clock = new THREE.Clock(); // clock.getDelta() ≈ Time.deltaTime
 renderer.setAnimationLoop(() => {
