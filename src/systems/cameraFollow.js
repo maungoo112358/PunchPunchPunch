@@ -9,14 +9,14 @@ import * as THREE from "three";
 // camera's `up` is set to the surface normal every frame — that's what keeps the horizon level as
 // you round the globe. We expose forward/right (the tangent basis) so movement stays camera-relative.
 const ORBIT_DIST = 11; // straight-line distance from the character
-const LOOK_HEIGHT = 1.5; // aim at the upper body, not the feet
+const LOOK_HEIGHT = 2.4; // aim ABOVE the wizard's head → he sits in the lower frame, big sky above (vista feel)
 const POS_DAMP = 10; // camera position follow speed (smooths translation only)
 const LOOK_SENS = 0.005; // radians of rotation per pixel of drag
-const MIN_PITCH = 0.1; // ~6°  — almost level (kept above the surface so we never flip under)
+const MIN_PITCH = 0.13; // ~7° — low enough to open the sky right up, but keeps the lens above the grass tops
 const MAX_PITCH = 1.2; // ~69° — steep, near top-down, but not straight over
 
 export function createCameraFollow(camera, target, input, planet) {
-  let pitch = 0.59; // elevation above the character (~34°, matches the old behind-the-back framing)
+  let pitch = 0.32; // lower default (~18°) → camera sits low + looks outward, horizon drops, sky fills the frame
   const forward = new THREE.Vector3(0, 0, 1); // tangent heading (camera→character look dir); persisted state
   const right = new THREE.Vector3(1, 0, 0); // tangent right, derived each frame
   const up = new THREE.Vector3(0, 1, 0); // surface normal at the character

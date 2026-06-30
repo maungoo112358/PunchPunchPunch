@@ -14,7 +14,7 @@ import { COLORS, srgb } from "../config/palette.js";
 // (the locked cozy-morning look). (Patch-level frustum culling = a later pass.)
 // ---------------------------------------------------------------------------
 
-const BLADE_COUNT = 250000; // total blades over the whole sphere (front ~half visible); tune by eye + FPS
+const BLADE_COUNT = 400000; // total blades over the whole sphere (front ~half visible); tune by eye + FPS
 const BLADE_JITTER = 0.13; // random tangent offset so the Fibonacci spiral doesn't read as a lattice
 
 // Tiny seeded RNG so the layout is deterministic (stable across reloads).

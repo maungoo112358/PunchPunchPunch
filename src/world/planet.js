@@ -12,7 +12,7 @@ import { COLORS } from "../config/palette.js";
 // gravityDir = (center - playerPos).normalized). With jump/attack parked there's no falling —
 // "gravity" here just means SNAP a position to the surface + orient up to the normal (kinematic).
 
-const PLANET_RADIUS = 28; // gentle "crest of a hill" curve (Messenger-style), not a tight marble; tune to taste
+const PLANET_RADIUS = 36; // bigger → gentler curve, reads as a larger world (closer to the reference); tune to taste
 const PLANET_DETAIL = 11; // icosphere subdivisions: higher = rounder silhouette, fewer visible facets
 
 export function createPlanet(scene) {

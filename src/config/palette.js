@@ -19,8 +19,9 @@ export const COLORS = {
   // --- World ---
   GROUND:        0x1a2117, // #1a2117  near-black cool soil     — world/ground.js plane (hides gaps)
   PATH:          0xd2c581, // #d2c581  warm cream sand          — reserved for future paths
-  BACKGROUND:    0xbcd6ec, // #bcd6ec  soft morning blue sky    — scene background (sky above horizon)
-  FOG:           0xe9ddc8, // #e9ddc8  warm pale haze           — scene.fog (warm horizon glow, decoupled from sky)
+  BACKGROUND:    0x8cc1e8, // #8cc1e8  clearer morning blue sky — sky zenith (bluer than the old pale #bcd6ec so it reads as "clear blue")
+  SKY_HORIZON:   0x8cc1e8, // #8cc1e8  = zenith (FLAT sky)      — set equal to BACKGROUND on purpose: any two-color gradient produced a visible Mach band, so the sky is one flat blue + clouds for depth
+  FOG:           0xe9ddc8, // #e9ddc8  warm pale haze           — scene.fog / GRASS haze only (no longer shared with the sky; sky decoupled on the planet)
 
   // --- Grass (world/grass.js shader) ---
   // Green grass against the blue fog = warm/cool contrast; near reads green, far melts to fog.
