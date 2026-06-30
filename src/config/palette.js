@@ -2,21 +2,22 @@
 // Values are 0x hex (what Three.js wants); the #hex in comments is the same color
 // for designer tools. Named by ROLE, not by hue.
 //
-// MOOD: Tiny Glade deep twilight (ref Screenshot_1) — rich navy night, cool silvery
-// moonlight, foliage lit blue-green from above. One warm accent (hero light) stands in
-// for the warm window glow that makes the cool blue sing. Thick fog melts the horizon.
+// MOOD: cozy forest MORNING — HYBRID (warm golden light of #1 + soft blue sky of #3).
+// Warm gold sun + cool blue sky fill; blue sky above, warm pale haze glowing at the horizon.
+// Sky (BACKGROUND) and fog (FOG) are DECOUPLED so the horizon can glow warm under a blue sky.
 
 export const COLORS = {
   // --- Lighting (world/lights.js) ---
-  SUN:           0x93a4e0, // #93a4e0  cool silvery moonlight   — DirectionalLight + grass sun
-  SKY:           0x2e4486, // #2e4486  deep night-blue fill     — HemisphereLight (top) + grass ambient
-  GROUND_BOUNCE: 0x262443, // #262443  deep blue-violet bounce  — HemisphereLight (bottom)
+  SUN:           0xffd6a5, // #ffd6a5  pale warm gold (less orange) — DirectionalLight + grass sun
+  SKY:           0xa9c4de, // #a9c4de  soft morning blue        — HemisphereLight (top) + grass ambient
+  GROUND_BOUNCE: 0xb0937a, // #b0937a  softer warm bounce (less orange) — HemisphereLight (bottom)
   HERO:          0xffe6c4, // #ffe6c4  warm window-glow accent  — camera light on the character
 
   // --- World ---
   GROUND:        0x1a2117, // #1a2117  near-black cool soil     — world/ground.js plane (hides gaps)
   PATH:          0xd2c581, // #d2c581  warm cream sand          — reserved for future paths
-  BACKGROUND:    0x2c2d44, // #2c2d44  muted dusk slate (less blue) — scene background + fog
+  BACKGROUND:    0xbcd6ec, // #bcd6ec  soft morning blue sky    — scene background (sky above horizon)
+  FOG:           0xe9ddc8, // #e9ddc8  warm pale haze           — scene.fog (warm horizon glow, decoupled from sky)
 
   // --- Grass (world/grass.js shader) ---
   // Green grass against the blue fog = warm/cool contrast; near reads green, far melts to fog.
@@ -26,3 +27,10 @@ export const COLORS = {
   // --- Props (parked — future MegaKit foliage) ---
   LEAF:          0x5e8a72, // #5e8a72  cool teal-green tint     — cools bright daytime leaves into twilight
 };
+
+// Raw sRGB components [0..1] of a hex — for shader uniforms that must stay in DISPLAY space (NOT
+// linearized the way THREE.Color does). Used for the haze color the grass fog and the sky share, so
+// both resolve to the EXACT same on-screen color regardless of tone-mapping / color management.
+export function srgb(hex) {
+  return [((hex >> 16) & 255) / 255, ((hex >> 8) & 255) / 255, (hex & 255) / 255];
+}

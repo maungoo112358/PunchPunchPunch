@@ -4,7 +4,7 @@ import * as THREE from "three";
 // lights.js) centered on the target, so the shadow box travels with the character
 // instead of being left behind once he walks past the origin. The offset is constant,
 // so the shadow always falls in the same screen direction.
-const SUN_OFFSET = new THREE.Vector3(3, 4, 5); // same relative direction as the static sun
+const SUN_OFFSET = new THREE.Vector3(5, 5, 4); // mid-morning angle (match lights.js + grass uSunDir)
 
 export function createSunFollow(sun, target) {
   return {

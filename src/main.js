@@ -4,6 +4,7 @@ import { createCamera } from "./core/camera.js";
 import { createStats } from "./core/stats.js";
 import { addLights } from "./world/lights.js";
 import { addGround } from "./world/ground.js";
+import { addSky } from "./world/sky.js";
 import { addGrass } from "./world/grass.js";
 import { addHeroLight } from "./world/heroLight.js";
 import { Character } from "./entities/Character.js";
@@ -20,9 +21,12 @@ const renderer = createRenderer();
 const camera = createCamera();
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(COLORS.BACKGROUND); // pale hazy sky
-// Fog fades far grass + ground into the sky, hiding the field edge (and adding depth).
-scene.fog = new THREE.Fog(COLORS.BACKGROUND, 12, 40);
+scene.background = new THREE.Color(COLORS.BACKGROUND); // soft morning blue sky
+// Fog fades far grass + ground into the haze (hides the field edge, adds depth). DECOUPLED from
+// the sky: a warm FOG haze glows at the horizon under the blue sky. Far (30) sits INSIDE the grass
+// radius (~36) so the grass fully dissolves to the fog color before its edge → grass haze == sky
+// horizon == one continuous surface. (Push far out and the half-fogged grass mismatches the sky.)
+scene.fog = new THREE.Fog(COLORS.FOG, 10, 30);
 
 // Camera must be in the scene graph so its child hero light is counted.
 scene.add(camera);
@@ -30,6 +34,7 @@ scene.add(camera);
 // --- World ------------------------------------------------------------------
 const { sun } = addLights(scene);
 addGround(scene);
+const sky = addSky(scene, camera); // gradient dome (warm horizon → blue zenith), follows the camera
 addHeroLight(camera); // warm fill on the character, follows the view
 
 // --- Entities ---------------------------------------------------------------
@@ -48,7 +53,7 @@ const stats = createStats();
 // --- Update registry --------------------------------------------------------
 // Each entry's update(dt) is ticked every frame — this array IS the Unity update
 // loop. Order: drive the character first, then the camera/shadow track its new pos.
-const updatables = [controller, character, cameraFollow, sunFollow, grass, stats];
+const updatables = [controller, character, cameraFollow, sunFollow, sky, grass, stats];
 
 const clock = new THREE.Clock(); // clock.getDelta() ≈ Time.deltaTime
 renderer.setAnimationLoop(() => {

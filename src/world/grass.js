@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { COLORS } from "../config/palette.js";
+import { COLORS, srgb } from "../config/palette.js";
 
 // ---------------------------------------------------------------------------
 // CHUNKED GPU grass. The world is a grid of square chunks; we keep a (2R+1)^2
@@ -161,6 +161,7 @@ const fragmentShader = /* glsl */ `
   uniform float uAmbientStrength;
   uniform float uSunStrength;
   uniform float uTipGlow;
+  uniform vec3 uHazeColor; // raw sRGB haze (display space) — shared with the sky horizon
 
   varying float vHeight;
   varying vec3 vNormal;
@@ -181,7 +182,11 @@ const fragmentShader = /* glsl */ `
     gl_FragColor = vec4(color, 1.0);
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
-    #include <fog_fragment>
+    // Haze blended LAST, in display space, toward a raw sRGB color — so the far grass ends at the
+    // EXACT same on-screen color as the sky horizon (uHazeColor == sky uHorizon). No tone-map shift,
+    // no linear khaki, no white blowout. (fogNear/fogFar/vFogDepth are provided by fog:true.)
+    float fogFactor = smoothstep(fogNear, fogFar, vFogDepth);
+    gl_FragColor.rgb = mix(gl_FragColor.rgb, uHazeColor, fogFactor);
   }
 `;
 
@@ -201,13 +206,14 @@ export function addGrass(scene, target) {
       uPlayerPos: { value: new THREE.Vector3(1e9, 0, 1e9) }, // off in the void until the model loads
       uPlayerRadius: { value: 1.8 }, // parting radius around the character
       uPlayerStrength: { value: 0.4 }, // how far tips bend away (subtle part, not a blast)
-      uSunDir: { value: new THREE.Vector3(3, 4, 5).normalize() },
+      uSunDir: { value: new THREE.Vector3(5, 5, 4).normalize() }, // mid-morning angle (match lights.js + sunFollow)
       uSunColor: { value: new THREE.Color(COLORS.SUN) },
       uSkyColor: { value: new THREE.Color(COLORS.SKY) },
-      uAmbientStrength: { value: 0.35 }, // pulled back so green albedo wins; blue ambient only cools shadows
-      uSunStrength: { value: 0.6 }, // cool moonlight key lowered so ambient dominates
-      uTipGlow: { value: 0.12 },
-      // Fog uniforms — the renderer auto-updates these from scene.fog because fog:true.
+      uAmbientStrength: { value: 0.5 }, // soft blue sky fill balances the warm sun
+      uSunStrength: { value: 0.8 }, // warm directional, slightly gentler
+      uTipGlow: { value: 0.22 }, // warm rim on the tips, eased back
+      uHazeColor: { value: new THREE.Vector3(...srgb(COLORS.FOG)) }, // raw sRGB haze — matches sky horizon
+      // Fog uniforms — fogNear/fogFar auto-update from scene.fog because fog:true (we do our own blend).
       fogColor: { value: new THREE.Color() },
       fogNear: { value: 1 },
       fogFar: { value: 1000 },
