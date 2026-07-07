@@ -9,6 +9,8 @@ import { COLORS, srgb } from "../config/palette.js";
 
 const BLADE_COUNT = 400000; // total blades (front ~half visible); tune by eye + FPS
 const BLADE_JITTER = 0.13; // random tangent offset so the Fibonacci spiral doesn't read as a lattice
+const CARVE_MARGIN = 0.0; // base carve line: grass can reach the exact water edge (fringe adds the poke)
+const SHORE_FRINGE = 0.7; // ragged shore: how far blades randomly poke IN over the water, per blade
 
 // Seeded RNG so the layout is deterministic across reloads.
 function mulberry32(seed) {
@@ -31,7 +33,7 @@ const BLADE_INDICES = [0, 1, 2, 2, 1, 3, 2, 3, 4, 4, 3, 5, 4, 5, 6];
 
 // Scatter blade bases with a Fibonacci (golden-spiral) distribution:
 // deterministic, near-uniform, no pole pinch (lat/long would clump at the poles).
-function buildGrassGeometry(radius) {
+function buildGrassGeometry(radius, pond) {
   const geo = new THREE.InstancedBufferGeometry();
   geo.setAttribute("position", new THREE.BufferAttribute(BLADE_POSITIONS, 3));
   geo.setIndex(BLADE_INDICES);
@@ -49,6 +51,7 @@ function buildGrassGeometry(radius) {
   const ref = new THREE.Vector3();
   const base = new THREE.Vector3();
 
+  let k = 0; // write index for kept blades (carved ones are skipped, but still draw rng)
   for (let i = 0; i < BLADE_COUNT; i++) {
     const y = 1 - ((i + 0.5) / BLADE_COUNT) * 2; // +1 (top) to -1 (bottom)
     const r = Math.sqrt(Math.max(0, 1 - y * y));
@@ -67,18 +70,36 @@ function buildGrassGeometry(radius) {
       .addScaledVector(t2, (rng() * 2 - 1) * BLADE_JITTER)
       .setLength(radius); // snap back onto the surface
 
-    aBase[i * 3 + 0] = base.x;
-    aBase[i * 3 + 1] = base.y;
-    aBase[i * 3 + 2] = base.z;
-    aRotation[i] = rng() * Math.PI * 2;
-    aHeight[i] = 0.9 + rng() * 0.6; // ~0.9..1.5 tall
-    aPhase[i] = rng() * Math.PI * 2;
+    // Draw every blade's randoms up front so the RNG stream stays fixed: carving must only
+    // delete pond blades, not reshuffle the rest of the field. carveJitter is drawn here too
+    // (unconditionally) for the same reason, even though it only matters at the rim.
+    const rot = rng() * Math.PI * 2;
+    const h = 0.9 + rng() * 0.6; // ~0.9..1.5 tall
+    const ph = rng() * Math.PI * 2;
+    const carveJitter = rng(); // 0..1, ragged-shore randomness per blade
+
+    // Carve the pond, but with a ragged edge: each blade's cut line is pulled inward by a random
+    // amount, so near the rim the grass thins into a fringe and some blades survive INTO the water
+    // (they poke over the waterline and break up the clean bright shoreline ring). A negative margin
+    // means "keep this blade even if it sits up to SHORE_FRINGE units inside the water edge".
+    const carveMargin = CARVE_MARGIN - carveJitter * SHORE_FRINGE;
+    if (pond && pond.contains(base, carveMargin)) continue;
+
+    aBase[k * 3 + 0] = base.x;
+    aBase[k * 3 + 1] = base.y;
+    aBase[k * 3 + 2] = base.z;
+    aRotation[k] = rot;
+    aHeight[k] = h;
+    aPhase[k] = ph;
+    k++;
   }
 
-  geo.setAttribute("aBase", new THREE.InstancedBufferAttribute(aBase, 3));
-  geo.setAttribute("aRotation", new THREE.InstancedBufferAttribute(aRotation, 1));
-  geo.setAttribute("aHeight", new THREE.InstancedBufferAttribute(aHeight, 1));
-  geo.setAttribute("aPhase", new THREE.InstancedBufferAttribute(aPhase, 1));
+  // Size the instanced attributes to the kept blades only (subarray is a view, no copy).
+  geo.setAttribute("aBase", new THREE.InstancedBufferAttribute(aBase.subarray(0, k * 3), 3));
+  geo.setAttribute("aRotation", new THREE.InstancedBufferAttribute(aRotation.subarray(0, k), 1));
+  geo.setAttribute("aHeight", new THREE.InstancedBufferAttribute(aHeight.subarray(0, k), 1));
+  geo.setAttribute("aPhase", new THREE.InstancedBufferAttribute(aPhase.subarray(0, k), 1));
+  geo.instanceCount = k; // render only the kept blades
 
   // One static mesh covering the planet; bound to planet radius + tallest blade.
   geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), radius + 2);
@@ -198,7 +219,7 @@ const fragmentShader = /* glsl */ `
   }
 `;
 
-export function addGrass(scene, target, planet) {
+export function addGrass(scene, target, planet, pond) {
   const material = new THREE.ShaderMaterial({
     uniforms: {
       uBaseColor: { value: new THREE.Color(COLORS.GRASS_BASE) },
@@ -231,7 +252,7 @@ export function addGrass(scene, target, planet) {
     fog: true,
   });
 
-  const geo = buildGrassGeometry(planet.radius);
+  const geo = buildGrassGeometry(planet.radius, pond);
   const mesh = new THREE.Mesh(geo, material);
   scene.add(mesh);
 

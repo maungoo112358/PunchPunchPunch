@@ -4,6 +4,7 @@ import { createCamera } from "./core/camera.js";
 import { createStats } from "./core/stats.js";
 import { addLights } from "./world/lights.js";
 import { createPlanet } from "./world/planet.js";
+import { createPond } from "./world/pond.js";
 import { addSky } from "./world/sky.js";
 import { addGrass } from "./world/grass.js";
 import { addHeroLight } from "./world/heroLight.js";
@@ -32,6 +33,7 @@ scene.add(camera);
 // --- World ---
 const { sun } = addLights(scene);
 const planet = createPlanet(scene); // tiny spherical world
+const pond = createPond(scene, planet); // water disc (fresnel uses the built-in camera uniform)
 const sky = addSky(scene, camera); // flat blue dome + clouds, follows the camera
 addHeroLight(camera); // warm fill on the character, follows the view
 
@@ -41,7 +43,8 @@ const spawn = new THREE.Vector3(0, planet.radius, 0);
 const character = new Character(scene, "/models/Wizard.gltf", spawn);
 
 // Grass over the whole planet; needs the character (parting) + planet (radius/normals).
-const grass = addGrass(scene, character, planet);
+// pond is passed so the scatter carves the water footprint clear of blades.
+const grass = addGrass(scene, character, planet, pond);
 
 // --- Systems ---
 const input = createInput();
@@ -53,7 +56,7 @@ const stats = createStats();
 // --- Update registry ---
 // Each update(dt) ticks every frame; this array is the Unity update loop.
 // Order: drive the character first, then camera/shadow track its new pos.
-const updatables = [controller, character, cameraFollow, sunFollow, sky, grass, stats];
+const updatables = [controller, character, cameraFollow, pond, sunFollow, sky, grass, stats];
 
 const clock = new THREE.Clock(); // getDelta() ~ Time.deltaTime
 renderer.setAnimationLoop(() => {
