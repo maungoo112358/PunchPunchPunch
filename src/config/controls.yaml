@@ -1,0 +1,23 @@
+# Key bindings for the dev placement editor (press M). Change a value, refresh, done — no code edits.
+#
+# Values are KeyboardEvent.code names: letters are "KeyA".."KeyZ", arrows "ArrowLeft" etc, brackets
+# "BracketLeft"/"BracketRight", "Tab", "Escape". "save" may include a "Ctrl+" prefix.
+
+editor:
+  toggle: KeyM            # enter / leave editor mode
+
+  # rotate the whole planet (the view)
+  planet_up: KeyW
+  planet_down: KeyS
+  planet_left: KeyA
+  planet_right: KeyD
+
+  # transform the selected prop
+  rotate_ccw: KeyQ
+  rotate_cw: KeyE
+  scale_down: BracketLeft   # [
+  scale_up: BracketRight    # ]
+
+  cycle: Tab              # cycle which prop is selected
+  deselect: Escape
+  save: Ctrl+KeyS         # write everything back to propPlacements.yaml

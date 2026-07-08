@@ -3,15 +3,18 @@ import { COLORS } from "../config/palette.js";
 
 // Depth-based pond, built as REAL geometry. See docs/POND_IMPLEMENTATION.md for the full plan.
 //
-// STEP 1 (current): geometry only, no shader effects.
+// STEP 1 (done): geometry only.
 //   - BED (bowl): a basin dug into the planet, deep in the middle, rising to the rim.
 //   - WATER: a flat surface sitting in the bowl, a bit below the surrounding grass.
 //   - DENT: push the planet's own surface down under the pond so its cap can't cover the bowl.
-// The idea: give the water a real bed that rises to the shore, so later steps can read water
-// THICKNESS (surface-to-bed distance) from a depth buffer and get shallow color + foam for free.
+// STEP 2 (current): depth prepass. Once a frame we draw the whole world with the water hidden into
+//   an off-screen buffer that keeps DEPTH (how far each pixel is from the camera). The water is now a
+//   small ShaderMaterial that reads that buffer, so it can tell how far the bed sits behind it.
+// The idea: give the water a real bed that rises to the shore, so we can read water THICKNESS
+// (surface-to-bed distance) from that depth buffer and get shallow color + foam for free.
 
 // --- Placement ---
-const POND_DIR = new THREE.Vector3(0, 0.94, 0.34).normalize(); // ~20 deg off the north pole (spawn)
+const POND_DIR = new THREE.Vector3(0, 0.978, 0.208).normalize(); // ~12 deg off the north pole (spawn), so it sits right at the character's feet with a small gap
 const POND_RADIUS = 5; // pond radius across the surface (world units), before the organic wobble
 const POND_RINGS = 24; // radial subdivisions of the bowl/water discs (more = smoother bowl)
 const POND_SEGMENTS = 64; // subdivisions around the disc (more = rounder outline)
@@ -19,7 +22,7 @@ const POND_WOBBLE = 0.2; // outline lumpiness (0 = perfect circle)
 
 // --- Depths (all measured inward from the planet surface radius) ---
 const BED_DEPTH = 2.0; // how deep the bowl center sits below the rim
-const WATER_DROP = 0.6; // how far the water surface sits below the surrounding grass line
+const WATER_DROP = 0.15; // how far the water surface sits below the surrounding grass line
 const DENT_EXTRA = 2.0; // how far BELOW the bowl we push the planet cap so it can't cover the pond
 const DENT_MARGIN = 1.0; // dent planet verts a bit past the rim so no green cap peeks inside
 const BOWL_LIP_REACH = 0.6; // how far the bowl's lip reaches out over the ground (covers the gap at the edge)
@@ -27,6 +30,48 @@ const BOWL_LIP_HEIGHT = 0.03; // how much the lip is raised so it sits on top of
 
 // Placeholder bed color for step 1 (a muddy sand). Promote to palette once the look is settled.
 const BED_COLOR = 0x7a6547;
+
+// While true, the water is painted as a grayscale THICKNESS preview instead of the real color: dark at
+// the shore (thin water) getting brighter toward the deep center. Just a dev view to prove the depth
+// buffer is live and lined up. Leave false for the real look; flip on to debug the depth read.
+const DEPTH_DEBUG = false;
+
+// How many world units of water thickness it takes to reach the full DEEP color. Small = only a thin
+// bright rim at the very edge; large = broad soft shallows creeping toward the middle. The bowl is at
+// most BED_DEPTH - WATER_DROP deep (~1.85), so keep this under that to actually reach deep in the center.
+const WATER_DEPTH_FADE = 1.0;
+
+// Sky reflection (fresnel). Water mirrors the sky where your eye grazes the surface (the far edge) and
+// stays see-through where you look straight down. POWER = how sharply that kicks in (higher = reflection
+// only at the glancing far rim); STRENGTH = the most sky it ever blends in (higher = more mirror, less
+// depth color showing through).
+const WATER_FRESNEL_POWER = 4.0;
+const WATER_REFLECT_STRENGTH = 0.4;
+
+// Ripples. The water stays a flat disc; we just TILT its surface normal (the "which way am I facing"
+// vector) with a stack of scrolling waves, and the lighting/reflection believes it is rippling. The wave
+// sizes and directions live inside rippleNormal(); these are the overall dials on top of that.
+// STRENGTH = how hard the waves tilt the normal (bigger = choppier); SPEED = drift rate (cozy slow);
+// SCALE = zoom on the whole ripple field (bigger = finer/tighter, smaller = broader).
+const WATER_RIPPLE_STRENGTH = 0.15;
+const WATER_RIPPLE_SPEED = 0.3;
+const WATER_RIPPLE_SCALE = 1.5;
+
+// Sun glint (specular). A bright warm sparkle where the sun's reflection bounces straight back at your
+// eye. It rides on the RIPPLED normal, so it is what finally makes the ripples visible: the hotspot
+// shatters into little dancing points as the waves tilt the surface. STRENGTH = sparkle brightness;
+// SHARPNESS = how tight the hotspot is (higher = tiny pinpoint glints, lower = a broad soft sheen).
+const WATER_GLINT_STRENGTH = 0.5;
+const WATER_GLINT_SHARPNESS = 200.0;
+
+// Shoreline foam. Foam shows up where the water is thin (near the shore), broken into wandering patches
+// by scrolling noise so it is NOT a clean ring. DEPTH = how far in from the shore foam can reach (water
+// thickness in world units); SCALE = size of the foam patches (bigger = smaller, finer patches); CUT =
+// how much of the shore turns to foam (lower = more foam covers it); SOFT = how soft the foam edges are.
+const WATER_FOAM_DEPTH = 0.8;
+const WATER_FOAM_SCALE = 3.0;
+const WATER_FOAM_CUT = 0.3;
+const WATER_FOAM_SOFT = 0.2;
 
 // Three waves added together make the lumpy edge. Each wave has three knobs:
 //   STRENGTH = how far it pushes the edge in/out
@@ -182,12 +227,238 @@ export function createPond(scene, planet) {
   bed.receiveShadow = true;
   scene.add(bed);
 
-  // Water: a level cap (constant depth) sitting WATER_DROP below the grass line. Opaque + DoubleSide
-  // for now so the seal is easy to judge (no seeing through it). The real water shader arrives later.
+  // Off-screen buffer for the depth prepass. We render the world into it once a frame (with the water
+  // hidden) and keep the DEPTH channel: for every screen pixel, how far the nearest solid thing (the
+  // bed, the shore, the ground) is from the camera. depthTexture is that depth, handed to the water
+  // shader. Size 1x1 for now; main.js calls setSize right away with the real canvas size.
+  const depthTexture = new THREE.DepthTexture(1, 1);
+  depthTexture.type = THREE.UnsignedIntType; // 24-bit-ish, enough precision to unsquish later
+  const depthTarget = new THREE.WebGLRenderTarget(1, 1, { depthTexture });
+
+  // Water: a level cap (constant depth) sitting WATER_DROP below the grass line. It is now a small
+  // ShaderMaterial so it can sample the depth buffer. For Step 2 it either shows a flat blue or, when
+  // DEPTH_DEBUG is on, a grayscale thickness preview. DoubleSide so you never see through its back.
   const waterGeo = buildCapDisc(planet.radius, center, tWorld, bWorld, normal, () => WATER_DROP);
-  const waterMat = new THREE.MeshBasicMaterial({ color: COLORS.WATER_DEEP, side: THREE.DoubleSide });
+  const waterMat = new THREE.ShaderMaterial({
+    side: THREE.DoubleSide,
+    uniforms: {
+      tDepth: { value: depthTexture }, // the scene's distance-from-camera behind the water
+      uResolution: { value: new THREE.Vector2(1, 1) }, // canvas pixel size, so we can find our screen spot
+      cameraNear: { value: 0.1 }, // camera clip planes, needed to unsquish the depth value
+      cameraFar: { value: 1000 },
+      uShallow: { value: new THREE.Color(COLORS.WATER_SHALLOW) }, // thin water near the shore
+      uDeep: { value: new THREE.Color(COLORS.WATER_DEEP) }, // thick water in the middle
+      uDepthFade: { value: WATER_DEPTH_FADE }, // thickness (world units) to reach full deep color
+      uSky: { value: new THREE.Color(COLORS.WATER_SKY) }, // sky tint the surface reflects at grazing angles
+      uFresnelPower: { value: WATER_FRESNEL_POWER },
+      uReflectStrength: { value: WATER_REFLECT_STRENGTH },
+      uTime: { value: 0 }, // seconds, ticked in update(); scrolls the ripples
+      uRippleStrength: { value: WATER_RIPPLE_STRENGTH },
+      uRippleSpeed: { value: WATER_RIPPLE_SPEED },
+      uRippleScale: { value: WATER_RIPPLE_SCALE },
+      uSunDir: { value: new THREE.Vector3(5, 5, 4).normalize() }, // to-sun direction (match lights.js + grass)
+      uGlintColor: { value: new THREE.Color(COLORS.SUN) }, // warm gold sparkle
+      uGlintStrength: { value: WATER_GLINT_STRENGTH },
+      uGlintSharpness: { value: WATER_GLINT_SHARPNESS },
+      uPondSize: { value: POND_RADIUS * 2 }, // pond width in world units; turns the 0..1 mesh uv into real distance for the ripples
+      uFoam: { value: new THREE.Color(COLORS.WATER_FOAM) }, // near-white shoreline foam
+      uFoamDepth: { value: WATER_FOAM_DEPTH },
+      uFoamScale: { value: WATER_FOAM_SCALE },
+      uFoamCut: { value: WATER_FOAM_CUT },
+      uFoamSoft: { value: WATER_FOAM_SOFT },
+      uDebug: { value: DEPTH_DEBUG },
+      uDebugScale: { value: BED_DEPTH - WATER_DROP }, // deepest possible water; maps thickness to 0..1 gray
+    },
+    vertexShader: /* glsl */ `
+      // Hand the fragment shader where this point sits in the world and which way the surface faces
+      // there. Fresnel needs both: the direction from the point to the eye, versus the surface normal.
+      // vUv is the pond's built-in "where on the pond" value: 0..1 across the water, 0.5 at the center.
+      // The ripples read it so each spot gets a different wave.
+      varying vec3 vWorldPos;
+      varying vec3 vWorldNormal;
+      varying vec2 vUv;
+      void main() {
+        vec4 worldPos = modelMatrix * vec4(position, 1.0);
+        vWorldPos = worldPos.xyz;
+        vWorldNormal = normalize(mat3(modelMatrix) * normal);
+        vUv = uv;
+        gl_Position = projectionMatrix * viewMatrix * worldPos;
+      }
+    `,
+    fragmentShader: /* glsl */ `
+      #include <packing>
+      uniform sampler2D tDepth;
+      uniform vec2 uResolution;
+      uniform float cameraNear;
+      uniform float cameraFar;
+      uniform vec3 uShallow;
+      uniform vec3 uDeep;
+      uniform float uDepthFade;
+      uniform vec3 uSky;
+      uniform float uFresnelPower;
+      uniform float uReflectStrength;
+      uniform float uTime;
+      uniform float uRippleStrength;
+      uniform float uRippleSpeed;
+      uniform float uRippleScale;
+      uniform vec3 uSunDir;
+      uniform vec3 uGlintColor;
+      uniform float uGlintStrength;
+      uniform float uGlintSharpness;
+      uniform float uPondSize;
+      uniform vec3 uFoam;
+      uniform float uFoamDepth;
+      uniform float uFoamScale;
+      uniform float uFoamCut;
+      uniform float uFoamSoft;
+      uniform bool uDebug;
+      uniform float uDebugScale;
+
+      varying vec3 vWorldPos;
+      varying vec3 vWorldNormal;
+      varying vec2 vUv;
+
+      // Turn a depth-buffer value (squished, lots of detail up close) into a real distance in front of
+      // the camera, in world units. near/far undo the squish. Returns a positive number.
+      float distToCamera(float depthSample) {
+        float viewZ = perspectiveDepthToViewZ(depthSample, cameraNear, cameraFar);
+        return -viewZ;
+      }
+
+      // A blotchy 0..1 pattern used to break the foam into patches. hash() turns a grid corner into a
+      // pseudo-random number; valueNoise() picks the four corners around a spot and blends them smoothly,
+      // giving soft random blobs instead of a regular grid.
+      float hash(vec2 p) {
+        return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+      }
+      float valueNoise(vec2 p) {
+        vec2 i = floor(p);
+        vec2 f = fract(p);
+        vec2 u = f * f * (3.0 - 2.0 * f); // smooth the blend so there are no hard seams
+        float a = hash(i);
+        float b = hash(i + vec2(1.0, 0.0));
+        float c = hash(i + vec2(0.0, 1.0));
+        float d = hash(i + vec2(1.0, 1.0));
+        return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+      }
+
+      // Tilt the flat surface normal to fake ripples. We picture a bumpy water height made of several
+      // scrolling waves of different sizes and directions, find how steep that height is at this spot (the
+      // sum of every wave's steepness), and lean the normal against it. p is where we are on the water; N
+      // is the flat normal; T and B are the two flat directions along the surface to lean toward.
+      vec3 rippleNormal(vec2 p, vec3 N, vec3 T, vec3 B) {
+        p *= uRippleScale;
+        float t = uTime * uRippleSpeed;
+
+        // First nudge the sample spot around with a slow wide wave. This bends and wanders the ripples so
+        // they stop marching in dead-straight rows, which is what made them look uniform and fake.
+        p += 0.9 * vec2(sin(p.y * 0.5 + t * 0.7), sin(p.x * 0.45 - t * 0.6));
+
+        // Stack waves of different sizes aimed in odd directions, moving at different speeds. The sizes are
+        // not simple multiples of each other and the directions do not line up, so they never settle into
+        // a repeating pattern. The big slow waves set the overall shape; each smaller one is weaker and
+        // just adds finer detail on top. cos() is the steepness of a sin() wave.
+        vec2 slope = vec2(0.0);
+        slope += 0.90 * cos(dot(p, vec2( 0.98,  0.19)) * 1.0 + t * 1.00) * vec2( 0.98,  0.19);
+        slope += 0.55 * cos(dot(p, vec2(-0.29,  0.96)) * 1.8 + t * 1.30) * vec2(-0.29,  0.96);
+        slope += 0.35 * cos(dot(p, vec2( 0.60, -0.80)) * 3.1 + t * 0.85) * vec2( 0.60, -0.80);
+        slope += 0.22 * cos(dot(p, vec2(-0.85, -0.53)) * 5.0 + t * 1.60) * vec2(-0.85, -0.53);
+        slope += 0.14 * cos(dot(p, vec2( 0.44,  0.90)) * 7.7 + t * 1.15) * vec2( 0.44,  0.90);
+
+        // Lean the flat normal along the total steepness, then bring it back to unit length.
+        return normalize(N - uRippleStrength * (slope.x * T + slope.y * B));
+      }
+
+      void main() {
+        // Where am I on the screen? gl_FragCoord is this pixel's spot in screen pixels; divide by the
+        // canvas size to get a 0..1 coordinate to look up the depth buffer with.
+        vec2 screenUV = gl_FragCoord.xy / uResolution;
+
+        // Distance to the bed behind me, and distance to my own water surface. The difference is how much
+        // water is stacked up here: ~0 at the shore, biggest over the deep middle.
+        float bedDist = distToCamera(texture2D(tDepth, screenUV).x);
+        float surfaceDist = distToCamera(gl_FragCoord.z);
+        float thickness = max(bedDist - surfaceDist, 0.0);
+
+        if (uDebug) {
+          // Dev view: show the thickness straight as gray.
+          float gray = clamp(thickness / uDebugScale, 0.0, 1.0);
+          gl_FragColor = vec4(vec3(gray), 1.0);
+        } else {
+          // Depth color: blend from the bright shallow tint to the deep tint as the water gets thicker.
+          // smoothstep gives a soft falloff (no hard line) that eases in at the shore and out at depth.
+          float t = smoothstep(0.0, uDepthFade, thickness);
+          vec3 waterColor = mix(uShallow, uDeep, t);
+
+          // Build the surface's own two in-plane directions (T and B) from the flat normal, so the ripples
+          // have something to lean along: pick any axis not parallel to the normal, cross to get T, cross
+          // again for B.
+          vec3 baseN = normalize(vWorldNormal);
+          vec3 axis = abs(baseN.y) < 0.99 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+          vec3 T = normalize(cross(axis, baseN));
+          vec3 B = cross(baseN, T);
+          // Where this spot sits on the pond, in world units, taken from the mesh's own 0..1 uv (0.5 is the
+          // center) so it actually differs from spot to spot. This is what the ripple waves read.
+          vec2 surfaceUV = (vUv - 0.5) * uPondSize;
+          vec3 normal = rippleNormal(surfaceUV, baseN, T, B);
+
+          // Fresnel sky reflection: the more your eye grazes the surface, the more it acts like a mirror.
+          // viewDir points from this spot to the camera; when it is nearly parallel to the surface (the
+          // far edge of the pond) the dot with the normal is small, so fresnel is near 1 and we blend in
+          // the sky tint. Looking straight down, fresnel is near 0 and the depth color shows through.
+          // Using the rippled normal makes that reflection shimmer and wander instead of sitting still.
+          vec3 viewDir = normalize(cameraPosition - vWorldPos);
+          float fresnel = pow(1.0 - max(dot(viewDir, normal), 0.0), uFresnelPower);
+          vec3 color = mix(waterColor, uSky, fresnel * uReflectStrength);
+
+          // Sun glint: a sharp specular sparkle. The half vector sits halfway between the eye and the sun;
+          // when the (rippled) normal points along it, the sun's reflection aims right back at your eye and
+          // you get a bright hotspot. The high power keeps it a tight sparkle, not a broad sheen. Because it
+          // reads the rippled normal, the hotspot breaks into little dancing points across the waves.
+          vec3 halfVec = normalize(uSunDir + viewDir);
+          float spec = pow(max(dot(normal, halfVec), 0.0), uGlintSharpness);
+          color += uGlintColor * spec * uGlintStrength;
+
+          // Shoreline foam. shore is 1 right at the water's edge and fades to 0 by uFoamDepth of thickness,
+          // so foam can only live in the thin band near the shore. We multiply it by slow scrolling noise
+          // and cut the result, so foam only appears where a noise blob happens to be high: broken, drifting
+          // patches instead of a solid ring. Then blend the near-white foam color on top.
+          float shore = 1.0 - smoothstep(0.0, uFoamDepth, thickness);
+          float n = valueNoise(surfaceUV * uFoamScale + uTime * vec2(0.06, 0.045));
+          float foam = smoothstep(uFoamCut, uFoamCut + uFoamSoft, shore * n);
+          color = mix(color, uFoam, foam);
+
+          gl_FragColor = vec4(color, 1.0);
+        }
+
+        // Match the normal output pipeline (tone mapping + sRGB) so colors read the same as before.
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+      }
+    `,
+  });
   const mesh = new THREE.Mesh(waterGeo, waterMat);
   scene.add(mesh);
+
+  // Resize the depth buffer and tell the shader the new canvas size. main.js calls this once at startup
+  // and again on every window resize, passing the renderer's real drawing-buffer size (pixels).
+  function setSize(width, height) {
+    depthTarget.setSize(width, height);
+    waterMat.uniforms.uResolution.value.set(width, height);
+  }
+
+  // The depth prepass, run once a frame BEFORE the normal render. Hide the water, draw the whole world
+  // into the off-screen buffer (so its depth channel now holds the bed/ground behind where the water
+  // will be), then show the water again. The normal render right after this reads that depth.
+  function renderDepth(renderer, sceneRef, cameraRef) {
+    waterMat.uniforms.cameraNear.value = cameraRef.near;
+    waterMat.uniforms.cameraFar.value = cameraRef.far;
+    mesh.visible = false;
+    renderer.setRenderTarget(depthTarget);
+    renderer.render(sceneRef, cameraRef);
+    renderer.setRenderTarget(null);
+    mesh.visible = true;
+  }
 
   // Is a world point inside the pond footprint (+ margin)? Project into the pond frame, get angle +
   // distance, compare against the organic rim. The grass carve calls this to clear blades.
@@ -200,5 +471,11 @@ export function createPond(scene, planet) {
     return dist < pondRadiusAt(Math.atan2(y, x)) + margin;
   }
 
- return { mesh, bed, center, radius: POND_RADIUS, contains, update() {}, };
+  // Advance the ripple clock each frame so the waves scroll.
+  function update(dt) {
+    waterMat.uniforms.uTime.value += dt;
+  }
+
+  return { mesh, bed, center, radius: POND_RADIUS, contains, setSize, renderDepth, update };
 }
+

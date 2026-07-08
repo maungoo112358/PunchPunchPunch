@@ -1,0 +1,21 @@
+# Props on the planet. One list entry per prop.
+#
+# To ROUGH-PLACE: add "model" (short name from propCatalog.js) + "at" (a triangle, e.g. T25). On refresh
+# it drops at that triangle's center. Then press M and drag it to fine-tune.
+#
+# Fields:
+#   model   short name of the prop (see src/config/propCatalog.js)
+#   at      triangle to drop it on, e.g. T25 (the rough anchor; ignored once "dir" is set)
+#   dir     [x, y, z] exact spot (a direction from the planet center). Written by the editor on Ctrl+S.
+#   yaw     spin around the ground's up-axis, in degrees
+#   scale   size multiplier
+#   clear   how much grass to clear around it, in world units (optional)
+#
+# You edit "at" by hand; the editor fills in "dir", "yaw", "scale" when you save.
+
+- model: tree_1
+  at: T20
+- model: tree_3
+  at: T35
+- model: rock_1
+  at: T27

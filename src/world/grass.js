@@ -33,7 +33,7 @@ const BLADE_INDICES = [0, 1, 2, 2, 1, 3, 2, 3, 4, 4, 3, 5, 4, 5, 6];
 
 // Scatter blade bases with a Fibonacci (golden-spiral) distribution:
 // deterministic, near-uniform, no pole pinch (lat/long would clump at the poles).
-function buildGrassGeometry(radius, pond) {
+function buildGrassGeometry(radius, pond, path, propFootprints) {
   const geo = new THREE.InstancedBufferGeometry();
   geo.setAttribute("position", new THREE.BufferAttribute(BLADE_POSITIONS, 3));
   geo.setIndex(BLADE_INDICES);
@@ -84,6 +84,17 @@ function buildGrassGeometry(radius, pond) {
     // means "keep this blade even if it sits up to SHORE_FRINGE units inside the water edge".
     const carveMargin = CARVE_MARGIN - carveJitter * SHORE_FRINGE;
     if (pond && pond.contains(base, carveMargin)) continue;
+    // Same ragged carve for the dirt road, so grass clears off the path and frays over its edge.
+    if (path && path.contains(base, carveMargin)) continue;
+    // Clear grass in a small circle under each placed prop, so no blades poke up in front of it.
+    let underProp = false;
+    for (let f = 0; f < propFootprints.length; f++) {
+      if (base.distanceToSquared(propFootprints[f].center) < propFootprints[f].r2) {
+        underProp = true;
+        break;
+      }
+    }
+    if (underProp) continue;
 
     aBase[k * 3 + 0] = base.x;
     aBase[k * 3 + 1] = base.y;
@@ -219,7 +230,13 @@ const fragmentShader = /* glsl */ `
   }
 `;
 
-export function addGrass(scene, target, planet, pond) {
+// Turn a list of { center, radius } prop footprints into { center, r2 } so the blade loop can compare
+// squared distances (no per-blade square root).
+function prepFootprints(list) {
+  return list.map((f) => ({ center: f.center, r2: f.radius * f.radius }));
+}
+
+export function addGrass(scene, target, planet, pond, path, propFootprints = []) {
   const material = new THREE.ShaderMaterial({
     uniforms: {
       uBaseColor: { value: new THREE.Color(COLORS.GRASS_BASE) },
@@ -252,7 +269,7 @@ export function addGrass(scene, target, planet, pond) {
     fog: true,
   });
 
-  const geo = buildGrassGeometry(planet.radius, pond);
+  const geo = buildGrassGeometry(planet.radius, pond, path, prepFootprints(propFootprints));
   const mesh = new THREE.Mesh(geo, material);
   scene.add(mesh);
 
@@ -262,6 +279,16 @@ export function addGrass(scene, target, planet, pond) {
       if (target && target.model) {
         material.uniforms.uPlayerPos.value.copy(target.model.position); // grass parts around him
       }
+    },
+    setVisible(v) {
+      mesh.visible = v; // the editor hides the grass in editor mode
+    },
+    // Rebuild the whole blade field with a new set of prop footprints (called when props move on save).
+    // Heavy (regenerates every blade), so only ever on an explicit save, never per frame.
+    rebuild(list) {
+      const newGeo = buildGrassGeometry(planet.radius, pond, path, prepFootprints(list));
+      mesh.geometry.dispose();
+      mesh.geometry = newGeo;
     },
   };
 }
