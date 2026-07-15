@@ -19,32 +19,24 @@ const DEFAULT_CLEAR = 1.5; // default grass-clearing radius around a prop, world
 const _q1 = new THREE.Quaternion();
 const _q2 = new THREE.Quaternion();
 
-// One line out of propPlacements.yaml, written down as a real shape instead of only in the comment above.
+// One line out of propPlacements.yaml. These field names ARE the keys in that file, so renaming one here
+// means renaming it there too.
+//
 // model is left as a plain string on purpose: the YAML is just a text file, so it can name a prop that
 // does not exist, and loadSource below warns when it does. A PropName here would be a promise we cannot
 // keep, because types are gone by the time the file is actually read.
-export type PropEntry = {
-  model: string;
-  at?: string; // rough drop, a triangle label like "T25"
-  dir?: number[]; // exact spot the editor writes on save; wins over "at"
-  yaw?: number; // degrees around the surface normal
-  scale?: number; // multiplier on top of PROP_BASE_SCALE
-  clear?: number; // grass-clearing radius, world units
-};
+//
+// Two things no field name can carry: dir WINS OVER atTriangle once it is set (you hand-write the rough
+// triangle, the editor writes the exact direction on save), and scale multiplies PROP_BASE_SCALE rather
+// than replacing it.
+export type PropEntry = { model: string; atTriangle?: string; dir?: number[]; yawDegrees?: number; scale?: number; clearRadius?: number };
 
 // A placed prop: the line it came from, and the thing standing in the scene.
 export type PropRecord = { entry: PropEntry; object: THREE.Object3D };
 
-// One line as it goes back OUT to the YAML on save. Same idea as PropEntry, but dir/yaw/scale are always
-// written, so the file the editor produces is fully explicit.
-type SerializedProp = {
-  model: string;
-  at?: string;
-  dir?: number[];
-  yaw?: number;
-  scale?: number;
-  clear?: number;
-};
+// One line as it goes back OUT to the YAML on save. Same as PropEntry, except dir/yawDegrees/scale are
+// always written, so the file the editor produces is fully explicit.
+type SerializedProp = { model: string; atTriangle?: string; dir?: number[]; yawDegrees?: number; scale?: number; clearRadius?: number };
 
 // What createProps hands back. The dev-only placement editor drives all of it.
 export type Props = ReturnType<typeof createProps>;
@@ -57,7 +49,7 @@ export function createProps(scene: THREE.Scene, grid: PlanetGrid) {
   // unit vector (the surface normal / up at that spot).
   function resolveDir(entry: PropEntry) {
     if (Array.isArray(entry.dir)) return new THREE.Vector3(entry.dir[0], entry.dir[1], entry.dir[2]).normalize();
-    const spot = grid.gridPoint(entry.at || "");
+    const spot = grid.gridPoint(entry.atTriangle || "");
     return spot ? spot.up.clone() : new THREE.Vector3(0, 1, 0);
   }
 
@@ -66,7 +58,7 @@ export function createProps(scene: THREE.Scene, grid: PlanetGrid) {
     const dir = resolveDir(entry);
     object.position.copy(dir).multiplyScalar(grid.radius);
     _q1.setFromUnitVectors(UP, dir); // tilt local +Y onto the surface normal
-    _q2.setFromAxisAngle(dir, THREE.MathUtils.degToRad(entry.yaw || 0)); // spin around up
+    _q2.setFromAxisAngle(dir, THREE.MathUtils.degToRad(entry.yawDegrees || 0)); // spin around up
     object.quaternion.copy(_q2).multiply(_q1);
     object.scale.setScalar((entry.scale ?? 1) * PROP_BASE_SCALE);
   }
@@ -135,7 +127,7 @@ export function createProps(scene: THREE.Scene, grid: PlanetGrid) {
   function footprints() {
     return records.map((r) => ({
       center: resolveDir(r.entry).multiplyScalar(grid.radius),
-      radius: r.entry.clear ?? DEFAULT_CLEAR,
+      radius: r.entry.clearRadius ?? DEFAULT_CLEAR,
     }));
   }
 
@@ -145,11 +137,11 @@ export function createProps(scene: THREE.Scene, grid: PlanetGrid) {
       const e = r.entry;
       const dir = resolveDir(e);
       const out: SerializedProp = { model: e.model };
-      if (e.at) out.at = e.at; // keep the human-friendly anchor as a note
+      if (e.atTriangle) out.atTriangle = e.atTriangle; // keep the human-friendly anchor as a note
       out.dir = [round(dir.x), round(dir.y), round(dir.z)];
-      out.yaw = round(e.yaw || 0);
+      out.yawDegrees = round(e.yawDegrees || 0);
       out.scale = round(e.scale ?? 1);
-      if (e.clear != null) out.clear = e.clear;
+      if (e.clearRadius != null) out.clearRadius = e.clearRadius;
       return out;
     });
   }
@@ -175,18 +167,14 @@ export type Footprint = { center: THREE.Vector3; radius: number };
 // Build the grass footprints straight from raw YAML entries, BEFORE the meshes have loaded. The grass is
 // built once at startup and needs the prop spots then, which we can get from the entries alone (no mesh
 // required). Same math as resolveDir above.
-export function footprintsFromEntries(
-  entries: PropEntry[],
-  grid: PlanetGrid,
-  defaultClear = DEFAULT_CLEAR,
-) {
+export function footprintsFromEntries( entries: PropEntry[], grid: PlanetGrid, defaultClear = DEFAULT_CLEAR, ) {
   return entries
     .map((e) => {
       const dir = Array.isArray(e.dir)
         ? new THREE.Vector3(e.dir[0], e.dir[1], e.dir[2]).normalize()
-        : grid.gridPoint(e.at || "")?.up;
+        : grid.gridPoint(e.atTriangle || "")?.up;
       if (!dir) return null;
-      return { center: dir.clone().multiplyScalar(grid.radius), radius: e.clear ?? defaultClear };
+      return { center: dir.clone().multiplyScalar(grid.radius), radius: e.clearRadius ?? defaultClear };
     })
     // The nulls above (entries whose spot we could not work out) are dropped here. The test is still
     // plain Boolean, exactly as before. What is new is the "f is Footprint" part: TypeScript cannot see

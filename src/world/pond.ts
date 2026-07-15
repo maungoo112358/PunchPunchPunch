@@ -104,16 +104,7 @@ function pondRadiusAt(theta: number) {
 // a curve that falls to 0 and you get a bowl, deep in the middle and level with the rim, which is the bed.
 type DepthFn = (f: number) => number;
 
-function buildCapDisc(
-  planetRadius: number,
-  center: THREE.Vector3,
-  tWorld: THREE.Vector3,
-  bWorld: THREE.Vector3,
-  normal: THREE.Vector3,
-  depthFn: DepthFn,
-  lip = 0,
-  lift = 0,
-) {
+function buildCapDisc( planetRadius: number, center: THREE.Vector3, tWorld: THREE.Vector3, bWorld: THREE.Vector3, normal: THREE.Vector3, depthFn: DepthFn, lip = 0, lift = 0, ){
   const rings = POND_RINGS;
   const segments = POND_SEGMENTS;
   const positions = [];
@@ -200,12 +191,7 @@ function buildCapDisc(
 
 // Push the planet's own verts that fall inside the pond footprint down below the bowl, so the coarse
 // planet cap can't cover the fine bed mesh. It stays hidden under the bed + the grass at the rim.
-function dentPlanet(
-  planet: Planet,
-  center: THREE.Vector3,
-  tWorld: THREE.Vector3,
-  bWorld: THREE.Vector3,
-) {
+function dentPlanet( planet: Planet, center: THREE.Vector3, tWorld: THREE.Vector3, bWorld: THREE.Vector3, ){
   const pos = planet.mesh.geometry.attributes.position;
   const floorRadius = planet.radius - BED_DEPTH - DENT_EXTRA;
   const v = new THREE.Vector3();
@@ -475,11 +461,7 @@ export function createPond(scene: THREE.Scene, planet: Planet) {
   // will be), then show the water again. The normal render right after this reads that depth.
   // PerspectiveCamera, not the plainer Camera, because we read near and far off it below. Only the
   // perspective one has them, and they are what undo the depth buffer's squish.
-  function renderDepth(
-    renderer: THREE.WebGLRenderer,
-    sceneRef: THREE.Scene,
-    cameraRef: THREE.PerspectiveCamera,
-  ) {
+function renderDepth( renderer: THREE.WebGLRenderer, sceneRef: THREE.Scene, cameraRef: THREE.PerspectiveCamera, ) {
     waterMat.uniforms.cameraNear.value = cameraRef.near;
     waterMat.uniforms.cameraFar.value = cameraRef.far;
     mesh.visible = false;

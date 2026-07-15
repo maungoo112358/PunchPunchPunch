@@ -20,25 +20,14 @@ export function createVirtualControls() {
   if (!isTouch) {
     return {
       enabled: false,
-      getMove() {
-        return move;
-      },
-      consumeLook() {
-        look.x = 0;
-        look.y = 0;
-        return look;
-      },
+      getMove() {return move;},
+      consumeLook() { look.x = 0; look.y = 0; return look; },
     };
   }
 
   // full-screen touch overlay
   const root = document.createElement("div");
-  Object.assign(root.style, {
-    position: "fixed",
-    inset: "0",
-    zIndex: "10",
-    touchAction: "none",
-  });
+  Object.assign(root.style, { position: "fixed", inset: "0", zIndex: "10", touchAction: "none", });
 
   // Joystick visuals, pinned bottom-center. pointerEvents:none so the root stays the single
   // touch target (stick/look touches keep e.target === root).

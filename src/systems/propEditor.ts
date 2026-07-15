@@ -89,7 +89,7 @@ export function createPropEditor(deps: EditorDeps) {
     return (
       base +
       `\nselected: ${e.model}` +
-      `\nyaw:   ${Math.round(e.yaw || 0)}` +
+      `\nyaw:   ${Math.round(e.yawDegrees || 0)}` +
       `\nscale: ${(e.scale ?? 1).toFixed(2)}`
     );
   }
@@ -196,12 +196,12 @@ export function createPropEditor(deps: EditorDeps) {
     } else if (selected) {
       const e2 = selected.entry;
       if (e.code === keys.rotate_ccw) {
-        e2.yaw = (e2.yaw || 0) - ROT_STEP;
+        e2.yawDegrees = (e2.yawDegrees || 0) - ROT_STEP;
         props.apply(selected);
         refreshBox();
         updateHud();
       } else if (e.code === keys.rotate_cw) {
-        e2.yaw = (e2.yaw || 0) + ROT_STEP;
+        e2.yawDegrees = (e2.yawDegrees || 0) + ROT_STEP;
         props.apply(selected);
         refreshBox();
         updateHud();

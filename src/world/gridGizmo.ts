@@ -36,14 +36,7 @@ export function createGridGizmo(scene: THREE.Scene, grid: PlanetGrid) {
   // Each number is a little canvas chip turned into a camera-facing sprite. Cache textures by their text
   // so we only draw each number once.
   const texCache = new Map<string, THREE.CanvasTexture>();
-  function roundRect(
-    g: CanvasRenderingContext2D,
-    x: number,
-    y: number,
-    w: number,
-    h: number,
-    r: number,
-  ) {
+  function roundRect( g: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number, ) {
     g.beginPath();
     g.moveTo(x + r, y);
     g.arcTo(x + w, y, x + w, y + h, r);

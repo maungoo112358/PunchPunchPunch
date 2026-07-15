@@ -1,24 +1,44 @@
+# Props on the planet. One list entry per prop.
+#
+# Ctrl+S in the editor rewrites everything below this header from the live prop list. This header itself
+# is kept (vite.config.js reads it back off the front of the file and re-attaches it), so it is safe to
+# edit. A comment written further down, in among the entries, is NOT kept: once the list is data there is
+# nothing to say which entry it belonged to. Keep your notes up here.
+#
+# To ROUGH-PLACE: add "model" (short name from propCatalog.ts) + "atTriangle" (a triangle, e.g. T25). On
+# refresh it drops at that triangle's center. Then press M and drag it to fine-tune.
+#
+# Fields:
+#   model        short name of the prop (see src/config/propCatalog.ts)
+#   atTriangle   triangle to drop it on, e.g. T25 (the rough anchor; ignored once "dir" is set)
+#   dir          [x, y, z] exact spot (a direction from the planet center). Written by the editor on Ctrl+S.
+#   yawDegrees   spin around the ground's up-axis
+#   scale        size multiplier, applied on top of PROP_BASE_SCALE
+#   clearRadius  how much grass to clear around it, in world units (optional)
+#
+# You edit "atTriangle" by hand; the editor fills in "dir", "yawDegrees", "scale" when you save.
+
 - model: rock_1
-  at: T27
+  atTriangle: T27
   dir:
     - -0.653
     - 0
     - 0.757
-  yaw: 0
+  yawDegrees: 0
   scale: 1
 - model: tree_3
-  at: T35
+  atTriangle: T35
   dir:
     - -0.177
     - 0.295
     - -0.939
-  yaw: 0
+  yawDegrees: 0
   scale: 1
 - model: tree_1
-  at: T20
+  atTriangle: T20
   dir:
     - 0.152
     - 0.987
     - 0.057
-  yaw: 0
+  yawDegrees: 0
   scale: 1

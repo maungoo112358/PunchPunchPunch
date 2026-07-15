@@ -26,13 +26,7 @@ type MoveInput = { getDirection(): THREE.Vector3 };
 // world/path.js is still plain JS, and describing the piece we use is all it takes to work with it.
 type Road = { contains(worldPos: THREE.Vector3, margin?: number): boolean };
 
-export function createPlayerController(
-  character: Player,
-  input: MoveInput,
-  cameraFollow: CameraFollow,
-  planet: Planet,
-  path: Road | null,
-) {
+export function createPlayerController( character: Player, input: MoveInput, cameraFollow: CameraFollow, planet: Planet, path: Road | null, ) {
   const up = new THREE.Vector3(); // surface normal at the character, reused per frame
   const moveDir = new THREE.Vector3(); // world tangent move direction, reused
 
@@ -50,10 +44,7 @@ export function createPlayerController(
         // Build the world move direction from the camera's tangent basis (camera-relative).
         const fwd = cameraFollow.getForward();
         const right = cameraFollow.getRight();
-        moveDir
-          .copy(fwd)
-          .multiplyScalar(intent.z)
-          .addScaledVector(right, intent.x); // keeps magnitude, so walk/analog move slower
+        moveDir.copy(fwd).multiplyScalar(intent.z) .addScaledVector(right, intent.x); // keeps magnitude, so walk/analog move slower
 
         // Step along the tangent, then re-project onto the surface. Speed depends on the ground under
         // the character: the dirt road is quicker than the grass.

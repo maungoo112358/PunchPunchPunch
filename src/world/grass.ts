@@ -49,12 +49,7 @@ const BLADE_INDICES = [0, 1, 2, 2, 1, 3, 2, 3, 4, 4, 3, 5, 4, 5, 6];
 
 // Scatter blade bases with a Fibonacci (golden-spiral) distribution:
 // deterministic, near-uniform, no pole pinch (lat/long would clump at the poles).
-function buildGrassGeometry(
-  radius: number,
-  pond: Carve | null,
-  path: Carve | null,
-  propFootprints: PreppedFootprint[],
-) {
+function buildGrassGeometry( radius: number, pond: Carve | null, path: Carve | null, propFootprints: PreppedFootprint[], ){
   const geo = new THREE.InstancedBufferGeometry();
   geo.setAttribute("position", new THREE.BufferAttribute(BLADE_POSITIONS, 3));
   geo.setIndex(BLADE_INDICES);
