@@ -78,7 +78,7 @@ export function createVirtualControls() {
   function centerY() {
     return window.innerHeight - ANCHOR_BOTTOM;
   }
-  function setKnob(dx, dy) {
+  function setKnob(dx: number, dy: number) {
     knob.style.left = `${centerX() + dx}px`;
     knob.style.bottom = "auto";
     knob.style.top = `${centerY() + dy - 27}px`;
@@ -91,8 +91,11 @@ export function createVirtualControls() {
     knob.style.transform = "translate(-50%, 50%)";
   }
 
-  let moveId = null;
-  let lookId = null;
+  // Which finger is doing what, by the browser's id for it, or null when nobody is touching. These need
+  // to be spelled out because they are read inside the pointer handlers below. TypeScript can normally
+  // work a variable's type out from what you assign to it, but not once a nested function is involved.
+  let moveId: number | null = null;
+  let lookId: number | null = null;
   let lookLastX = 0;
   let lookLastY = 0;
 
@@ -136,7 +139,7 @@ export function createVirtualControls() {
     }
   });
 
-  function endPointer(e) {
+  function endPointer(e: PointerEvent) {
     if (e.pointerId === moveId) {
       moveId = null;
       move.x = 0;

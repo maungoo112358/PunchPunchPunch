@@ -1,4 +1,9 @@
 import * as THREE from "three";
+import type { Planet } from "../world/planet.js";
+import type { PlanetGrid } from "../world/planetGrid.js";
+import type { GridGizmo } from "../world/gridGizmo.js";
+import type { Grass } from "../world/grass.js";
+import type { Props, PropRecord } from "./props.js";
 
 // DEV-ONLY placement editor. Press the toggle key (M) to enter: grass hides, the number grid shows, the
 // view switches to a free orbit around the planet, and you can click a prop, drag it across the surface,
@@ -15,12 +20,44 @@ const SCALE_STEP = 1.06; // multiply per [ / ] press
 const MIN_PHI = 0.15, MAX_PHI = Math.PI - 0.15; // clamp so we never flip over the poles
 const NUDGE = 0.4; // world units per arrow-key fine nudge
 
-export function createPropEditor(deps) {
+// The editor's key bindings, straight out of controls.yaml. Every value is a KeyboardEvent.code name
+// like "KeyM" or "ArrowLeft", except save, which carries a "Ctrl+" prefix.
+type EditorKeys = {
+  toggle: string;
+  planet_up: string;
+  planet_down: string;
+  planet_left: string;
+  planet_right: string;
+  rotate_ccw: string;
+  rotate_cw: string;
+  scale_down: string;
+  scale_up: string;
+  cycle: string;
+  deselect: string;
+  save: string;
+};
+
+// Everything the editor needs handed to it, rather than reaching out and grabbing it.
+type EditorDeps = {
+  scene: THREE.Scene;
+  camera: THREE.Camera;
+  planet: Planet;
+  grid: PlanetGrid;
+  props: Props;
+  grass: Grass;
+  gizmo: GridGizmo;
+  controls: { editor: EditorKeys };
+};
+
+// What createPropEditor hands back. main.ts holds one of these, or null in a release build.
+export type PropEditor = ReturnType<typeof createPropEditor>;
+
+export function createPropEditor(deps: EditorDeps) {
   const { scene, camera, planet, grid, props, grass, gizmo, controls } = deps;
   const keys = controls.editor; // { toggle, planet_up, ... , save }
 
   let active = false;
-  let selected = null; // a props record, or null
+  let selected: PropRecord | null = null; // a props record, or null
   let dragging = false;
 
   // Free orbit camera state (spherical around the planet center).
@@ -32,7 +69,7 @@ export function createPropEditor(deps) {
   const _pos = new THREE.Vector3();
 
   // Yellow box around the selected prop.
-  let boxHelper = null;
+  let boxHelper: THREE.BoxHelper | null = null;
 
   // --- little on-screen readout ---
   const hud = document.createElement("div");
@@ -61,9 +98,12 @@ export function createPropEditor(deps) {
   }
 
   // --- selection ---
-  function recordFromObject(obj) {
+  function recordFromObject(obj: THREE.Object3D): PropRecord | null {
     for (const r of props.records) {
-      let o = obj;
+      // Walk up the parents looking for the prop this bit of mesh belongs to. o has to be allowed to be
+      // null because that is what parent gives back once we reach the top of the tree, which is the
+      // thing that stops the loop.
+      let o: THREE.Object3D | null = obj;
       while (o) {
         if (o === r.object) return r;
         o = o.parent;
@@ -72,7 +112,7 @@ export function createPropEditor(deps) {
     return null;
   }
 
-  function select(rec) {
+  function select(rec: PropRecord | null) {
     selected = rec;
     if (rec) {
       if (!boxHelper) {
@@ -95,11 +135,11 @@ export function createPropEditor(deps) {
   }
 
   // --- pointer: raycast props to select, raycast the planet to drag ---
-  function setNdc(e) {
+  function setNdc(e: PointerEvent) {
     ndc.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
   }
 
-  function onPointerDown(e) {
+  function onPointerDown(e: PointerEvent) {
     if (!active || e.button !== 0) return;
     setNdc(e);
     raycaster.setFromCamera(ndc, camera);
@@ -113,7 +153,7 @@ export function createPropEditor(deps) {
     }
   }
 
-  function onPointerMove(e) {
+  function onPointerMove(e: PointerEvent) {
     if (!active || !dragging || !selected) return;
     setNdc(e);
     raycaster.setFromCamera(ndc, camera);
@@ -131,7 +171,7 @@ export function createPropEditor(deps) {
   }
 
   // --- keys ---
-  function onKeyDown(e) {
+  function onKeyDown(e: KeyboardEvent) {
     // toggle works whether or not we are in editor mode
     if (e.code === keys.toggle) {
       toggle();
@@ -181,15 +221,19 @@ export function createPropEditor(deps) {
     }
   }
 
-  function onKeyUp(e) {
+  function onKeyUp(e: KeyboardEvent) {
     held.delete(e.code);
   }
 
   // Slide the selected prop a small step across the surface, in screen-ish directions (relative to the
   // camera): left/right along the camera's right, up/down along its forward-on-the-surface.
-  function nudge(code) {
+  function nudge(code: string) {
     if (!selected) return;
-    const dir = new THREE.Vector3(...selected.entry.dir);
+    // Ask props where this entry sits. We used to read entry.dir straight, but that is only filled in
+    // once a prop has been dragged or saved: a prop rough-placed with just "at: T20" has no dir yet, so
+    // the arrow keys threw and the prop would not budge until you had dragged it once with the mouse.
+    // resolveDir handles both cases, and it is the same call that put the prop on the ground.
+    const dir = props.resolveDir(selected.entry);
     const camRight = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0);
     const north = new THREE.Vector3().crossVectors(dir, camRight).normalize(); // surface "up-screen"
     const east = new THREE.Vector3().crossVectors(north, dir).normalize();
@@ -210,7 +254,7 @@ export function createPropEditor(deps) {
     select(props.records[(i + 1) % props.records.length]);
   }
 
-  function onWheel(e) {
+  function onWheel(e: WheelEvent) {
     if (!active) return;
     e.preventDefault();
     sph.radius *= e.deltaY > 0 ? 1.1 : 0.9;
@@ -237,7 +281,7 @@ export function createPropEditor(deps) {
   }
 
   let flashTimer = 0;
-  function flashHud(msg) {
+  function flashHud(msg: string) {
     hud.textContent = msg;
     flashTimer = 1.2;
   }
@@ -259,7 +303,7 @@ export function createPropEditor(deps) {
   }
 
   // --- per-frame (only meaningful while active) ---
-  function update(dt) {
+  function update(dt: number) {
     if (!active) return;
 
     if (flashTimer > 0) {
@@ -290,6 +334,6 @@ export function createPropEditor(deps) {
   return { isActive: () => active, update };
 }
 
-function round(n) {
+function round(n: number) {
   return Math.round(n * 10000) / 10000;
 }

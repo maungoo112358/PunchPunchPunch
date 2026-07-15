@@ -18,6 +18,7 @@ import { createPlayerController } from "./systems/playerController.js";
 import { createCameraFollow } from "./systems/cameraFollow.js";
 import { createSunFollow } from "./systems/sunFollow.js";
 import { COLORS } from "./config/palette.js";
+import type { PropEditor } from "./systems/propEditor.js";
 
 console.log("PunchPunchPunch booting...");
 
@@ -66,7 +67,7 @@ props.loadAll(placements);
 
 // Dev-only placement editor (press M). import.meta.env.DEV is true under `npm run dev` and false in a
 // production build, so Vite strips this block (and the editor + grid modules) out of the released game.
-let editor = null;
+let editor: PropEditor | null = null;
 if (import.meta.env.DEV) {
   Promise.all([
     import("./world/gridGizmo.js"),
@@ -86,10 +87,18 @@ const sunFollow = createSunFollow(sun, character);
 const stats = createStats();
 
 // --- Update registry ---
+// Anything that ticks once a frame. Every module here already had an update(dt), so none of them had to
+// change or declare anything: in TypeScript a thing fits a shape just by having the right pieces. That is
+// unlike C#, where each of these classes would have to name an interface to qualify.
+type Updatable = { update(dt: number): void };
+
 // Each update(dt) ticks every frame; this array is the Unity update loop.
 // Order: drive the character first, then camera/shadow track its new pos.
-// filter(Boolean) drops the pond when it is parked (null).
-const updatables = [controller, character, cameraFollow, pond, sunFollow, sky, grass, stats].filter(Boolean);
+// filter drops the pond when it is parked (null). The test is still plain Boolean; the "u is Updatable"
+// part is us telling TypeScript what filtering leaves behind, which it cannot work out on its own.
+const updatables = [controller, character, cameraFollow, pond, sunFollow, sky, grass, stats].filter(
+  (u): u is Updatable => Boolean(u),
+);
 
 // Size the pond's depth buffer to the real canvas pixel size (drawing buffer = window size * pixel
 // ratio). Kept in sync on resize below.
@@ -105,7 +114,7 @@ renderer.setAnimationLoop(() => {
   if (editor && editor.isActive()) {
     editor.update(dt);
     sky.update?.(dt);
-    stats.update?.(dt);
+    stats.update?.(); // the FPS panel does not care how long the frame took, so it takes no dt
   } else {
     for (const u of updatables) u.update?.(dt);
   }

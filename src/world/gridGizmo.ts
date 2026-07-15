@@ -14,6 +14,9 @@ const LINE_COLOR = 0xffffff;
 const NUMBER_COLOR = "#ffffff";
 const FACE_SCALE = 2.2; // world size of a triangle number (eye-tune)
 
+// What createGridGizmo hands back. The dev-only editor shows and hides it.
+export type GridGizmo = ReturnType<typeof createGridGizmo>;
+
 export function createGridGizmo(scene: THREE.Scene, grid: PlanetGrid) {
   const R = grid.radius + LIFT;
   const group = new THREE.Group();

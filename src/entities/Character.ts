@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import type { GLTF } from "three/addons/loaders/GLTFLoader.js";
 
 // One shared loader instance is fine for all characters.
 const loader = new GLTFLoader();
@@ -29,7 +30,7 @@ const OUTLINE_THICKNESS = 0.03;
 // a spot is (a 0..1 number) and looks it up in this ramp, so a smooth fade becomes a few hard
 // bands, the cel-shaded anime look. NearestFilter snaps to the nearest step with no blending, which
 // is what keeps the band edges crisp.
-function makeToonGradient(steps) {
+function makeToonGradient(steps: number) {
   const data = new Uint8Array(steps);
   for (let i = 0; i < steps; i++) {
     const t = steps > 1 ? i / (steps - 1) : 1; // 0 at the darkest band, 1 at the brightest
@@ -69,13 +70,13 @@ function makeOutlineMaterial() {
 // up all the normals sharing a spot, and store that averaged, re-normalized direction in a new
 // aSmoothNormal attribute. The outline pushes along that, so corners that used to fly apart now
 // move together and the line stays solid. The real mesh keeps its own crisp normals, untouched.
-function addSmoothNormals(geometry) {
+function addSmoothNormals(geometry: THREE.BufferGeometry) {
   if (geometry.attributes.aSmoothNormal) return; // meshes can share geometry, only do it once
   const pos = geometry.attributes.position;
   const nor = geometry.attributes.normal;
   if (!pos || !nor) return;
-  const buckets = new Map(); // rounded-position key -> summed normal [x, y, z]
-  const keyAt = (i) =>
+  const buckets = new Map<string, number[]>(); // rounded-position key -> summed normal [x, y, z]
+  const keyAt = (i: number) =>
     `${Math.round(pos.getX(i) * 1e4)}_${Math.round(pos.getY(i) * 1e4)}_${Math.round(pos.getZ(i) * 1e4)}`;
   for (let i = 0; i < pos.count; i++) {
     const k = keyAt(i);
@@ -88,7 +89,9 @@ function addSmoothNormals(geometry) {
   const smooth = new Float32Array(pos.count * 3);
   const v = new THREE.Vector3();
   for (let i = 0; i < pos.count; i++) {
-    const sum = buckets.get(keyAt(i));
+    // The ! says this is definitely there. The loop just above put a bucket in for every single vertex,
+    // using these exact same keys, so a miss is not possible.
+    const sum = buckets.get(keyAt(i))!;
     v.set(sum[0], sum[1], sum[2]);
     if (v.lengthSq() > 1e-12) v.normalize();
     else v.set(nor.getX(i), nor.getY(i), nor.getZ(i)); // opposite normals cancelled out, fall back to raw
@@ -103,7 +106,18 @@ function addSmoothNormals(geometry) {
 // Loading is async, so model/mixer start null and methods no-op until ready.
 // Arrow callbacks keep `this` bound to the instance.
 export class Character {
-  constructor(scene, modelUrl, spawn = null) {
+  // TypeScript wants a class to say up front what it carries, the way C# does. In plain JavaScript these
+  // fields spring into being the moment the constructor assigns them; here they have to be listed. The
+  // constructor below is unchanged and still does the actual assigning.
+  scene: THREE.Scene;
+  spawn: THREE.Vector3 | null;
+  model: THREE.Object3D | null;
+  mixer: THREE.AnimationMixer | null;
+  actions: Record<string, THREE.AnimationAction>;
+  current: string | null;
+  turnSpeed: number;
+
+  constructor(scene: THREE.Scene, modelUrl: string, spawn: THREE.Vector3 | null = null) {
     this.scene = scene;
     this.spawn = spawn; // optional world spawn position, applied once the model loads
     this.model = null; // glTF root once loaded
@@ -120,7 +134,7 @@ export class Character {
     );
   }
 
-  _onLoad(gltf) {
+  _onLoad(gltf: GLTF) {
     const model = gltf.scene;
     // One shared ramp and one shared outline material for every mesh, so they all match.
     const gradient = makeToonGradient(TOON_STEPS);
@@ -130,22 +144,32 @@ export class Character {
     // it: flat cel bands instead of a smooth gradient. Collect the meshes as we go so we can add
     // outline shells right after, not during, the walk (adding children mid walk would make traverse
     // visit them too).
-    const meshes = [];
+    const meshes: THREE.Mesh[] = [];
     model.traverse((obj) => {
-      if (obj.isMesh) {
-        obj.castShadow = true; // he still drops a shadow on the grass, so he stays grounded
+      // traverse walks every node in the model and hands each one back as a plain Object3D, which has no
+      // material and no isMesh. isMesh is three's own "I am a mesh" marker, so we take the Object3D as a
+      // Mesh just long enough to ask, and keep that view for the rest of the block. Same object either
+      // way, we are only telling TypeScript what it already is.
+      const mesh = obj as THREE.Mesh;
+      if (mesh.isMesh) {
+        mesh.castShadow = true; // he still drops a shadow on the grass, so he stays grounded
         // But he does NOT receive shadows on himself. Otherwise the hat brim casts a hard dark bar
         // across his eyes. The cel ramp is meant to be the only thing shading him, clean like anime.
-        obj.receiveShadow = false;
-        const toonify = (mat) =>
-          new THREE.MeshToonMaterial({
-            map: mat.map || null, // reuse the glTF's painted texture as the base color
-            color: mat.color ? mat.color.clone() : new THREE.Color(0xffffff),
+        mesh.receiveShadow = false;
+        // Material is the plain base type here, which has no map or color: those live on the specific
+        // materials the glTF actually uses. Reading them through MeshStandardMaterial is how we get at
+        // them without knowing exactly which kind came out of the file.
+        const toonify = (mat: THREE.Material) => {
+          const src = mat as THREE.MeshStandardMaterial;
+          return new THREE.MeshToonMaterial({
+            map: src.map || null, // reuse the glTF's painted texture as the base color
+            color: src.color ? src.color.clone() : new THREE.Color(0xffffff),
             gradientMap: gradient,
           });
+        };
         // A mesh can carry one material or an array of them, so handle both.
-        obj.material = Array.isArray(obj.material) ? obj.material.map(toonify) : toonify(obj.material);
-        meshes.push(obj);
+        mesh.material = Array.isArray(mesh.material) ? mesh.material.map(toonify) : toonify(mesh.material);
+        meshes.push(mesh);
       }
     });
 
@@ -154,14 +178,18 @@ export class Character {
     // We parent the shell to its mesh so it inherits the same place in the world.
     for (const obj of meshes) {
       addSmoothNormals(obj.geometry); // welded push directions so the shell does not crack at hard edges
-      const shell = obj.isSkinnedMesh
+      // Same trick as above: isSkinnedMesh, skeleton and the bind matrices only exist on a SkinnedMesh,
+      // so we look at the mesh as one to reach them. The check itself decides whether it really is.
+      const rigged = obj as THREE.SkinnedMesh;
+      const shell = rigged.isSkinnedMesh
         ? new THREE.SkinnedMesh(obj.geometry, outlineMat)
         : new THREE.Mesh(obj.geometry, outlineMat);
-      if (obj.isSkinnedMesh) {
-        shell.skeleton = obj.skeleton;
-        shell.bindMode = obj.bindMode;
-        shell.bindMatrix.copy(obj.bindMatrix);
-        shell.bindMatrixInverse.copy(obj.bindMatrixInverse);
+      if (rigged.isSkinnedMesh) {
+        const riggedShell = shell as THREE.SkinnedMesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>;
+        riggedShell.skeleton = rigged.skeleton;
+        riggedShell.bindMode = rigged.bindMode;
+        riggedShell.bindMatrix.copy(rigged.bindMatrix);
+        riggedShell.bindMatrixInverse.copy(rigged.bindMatrixInverse);
       }
       shell.castShadow = false; // the shell is just a rim, it should not throw its own shadow
       shell.receiveShadow = false;
@@ -186,11 +214,15 @@ export class Character {
   }
 
   // Crossfade to a named clip (~ Unity Animator transition). No-op if already on it.
-  setAction(name, fade = 0.2) {
+  setAction(name: string, fade = 0.2) {
     if (this.current === name) return;
     const next = this.actions[name];
     if (!next) return;
-    const prev = this.actions[this.current];
+    // current starts out null, and you cannot look something up by null. Before, JavaScript quietly
+    // turned the null into the text "null", found no clip under that name, and handed back nothing. The
+    // check does the same thing out loud. In practice we never get here with a null: the line above
+    // bails out until the clips have loaded, and by then current is "Idle".
+    const prev = this.current ? this.actions[this.current] : undefined;
     if (prev) prev.fadeOut(fade);
     next.reset().fadeIn(fade).play();
     this.current = name;
@@ -200,7 +232,7 @@ export class Character {
   // local +Z along `forward`. Both are world-space; `forward` need not be perpendicular to `up`
   // (flattened into the tangent plane here). Slerps toward the target so turning and tilting stay
   // smooth. Facing on a sphere is a full orientation, not one angle, so this replaces rotation.y.
-  orient(up, forward, dt) {
+  orient(up: THREE.Vector3, forward: THREE.Vector3, dt: number) {
     if (!this.model) return;
     // Flatten forward into the tangent plane (remove the component along up), then normalize.
     _fwd.copy(forward).addScaledVector(up, -forward.dot(up));
@@ -213,7 +245,7 @@ export class Character {
   }
 
   // Called every frame (~ Update()). dt = seconds since last frame.
-  update(dt) {
+  update(dt: number) {
     if (this.mixer) this.mixer.update(dt);
   }
 }

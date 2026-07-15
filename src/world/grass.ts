@@ -257,6 +257,9 @@ function prepFootprints(list: PropFootprint[]): PreppedFootprint[] {
   return list.map((f) => ({ center: f.center, r2: f.radius * f.radius }));
 }
 
+// What addGrass hands back. The dev-only editor hides the field and rebuilds the carve on save.
+export type Grass = ReturnType<typeof addGrass>;
+
 export function addGrass(
   scene: THREE.Scene,
   target: GrassTarget | null,

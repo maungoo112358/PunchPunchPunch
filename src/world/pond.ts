@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { COLORS } from "../config/palette.js";
+import type { Planet } from "./planet.js";
 
 // Depth-based pond, built as REAL geometry. See docs/POND_IMPLEMENTATION.md for the full plan.
 //
@@ -84,7 +85,7 @@ const WAVE3_STRENGTH = 0.2, WAVE3_BUMPS = 5.0, WAVE3_ROT = 4.3;
 // Returns the distance from the pond center (origin) to an edge point in a given direction.
 // buildCapDisc uses that distance to place each mesh point.
 // The bowl, water, and grass carve all call this, so their edges match.
-function pondRadiusAt(theta) {
+function pondRadiusAt(theta: number) {
   const wob =
     WAVE1_STRENGTH * Math.sin(theta * WAVE1_BUMPS + WAVE1_ROT) +
     WAVE2_STRENGTH * Math.sin(theta * WAVE2_BUMPS + WAVE2_ROT) +
@@ -98,7 +99,21 @@ function pondRadiusAt(theta) {
 // depthFn(f): f is 0 at the center, 1 at the edge, and it returns how far that ring sits
 // BELOW the planet surface. Constant depthFn = flat (that's the water). A bowl curve =
 // deep in the middle rising to the rim (that's the basin/bed).
-function buildCapDisc(planetRadius, center, tWorld, bWorld, normal, depthFn, lip = 0, lift = 0) {
+// How far below the planet surface a ring of the disc sits, as you walk out from the middle. f is 0 at
+// the center and 1 at the edge. Hand it a constant and you get a flat disc, which is the water. Hand it
+// a curve that falls to 0 and you get a bowl, deep in the middle and level with the rim, which is the bed.
+type DepthFn = (f: number) => number;
+
+function buildCapDisc(
+  planetRadius: number,
+  center: THREE.Vector3,
+  tWorld: THREE.Vector3,
+  bWorld: THREE.Vector3,
+  normal: THREE.Vector3,
+  depthFn: DepthFn,
+  lip = 0,
+  lift = 0,
+) {
   const rings = POND_RINGS;
   const segments = POND_SEGMENTS;
   const positions = [];
@@ -109,7 +124,7 @@ function buildCapDisc(planetRadius, center, tWorld, bWorld, normal, depthFn, lip
   // Places one full ring of points around the pond. For each point: distanceOutAt(angle) says how far
   // out it sits from the pond center, height says how far it sits from the planet center (its depth),
   // and uvr is its texture-coordinate distance from the center. Both the bowl rings and the lip use this.
-  function placeRing(distanceOutAt, height, uvr) {
+  function placeRing(distanceOutAt: (angle: number) => number, height: number, uvr: number) {
     for (let i = 0; i < segments; i++) {
       const angle = (i / segments) * Math.PI * 2;
       const distanceOut = distanceOutAt(angle);
@@ -185,7 +200,12 @@ function buildCapDisc(planetRadius, center, tWorld, bWorld, normal, depthFn, lip
 
 // Push the planet's own verts that fall inside the pond footprint down below the bowl, so the coarse
 // planet cap can't cover the fine bed mesh. It stays hidden under the bed + the grass at the rim.
-function dentPlanet(planet, center, tWorld, bWorld) {
+function dentPlanet(
+  planet: Planet,
+  center: THREE.Vector3,
+  tWorld: THREE.Vector3,
+  bWorld: THREE.Vector3,
+) {
   const pos = planet.mesh.geometry.attributes.position;
   const floorRadius = planet.radius - BED_DEPTH - DENT_EXTRA;
   const v = new THREE.Vector3();
@@ -203,7 +223,10 @@ function dentPlanet(planet, center, tWorld, bWorld) {
   planet.mesh.geometry.computeVertexNormals();
 }
 
-export function createPond(scene, planet) {
+// What createPond hands back. The grass carve asks it contains(); main.js drives setSize/renderDepth.
+export type Pond = ReturnType<typeof createPond>;
+
+export function createPond(scene: THREE.Scene, planet: Planet) {
   // Pond center on the surface, its up (surface normal == dir here), and a tangent frame (tWorld,
   // bWorld) so local disc angles map to fixed world directions. The grass carve reuses this frame.
   const normal = POND_DIR.clone();
@@ -219,7 +242,7 @@ export function createPond(scene, planet) {
   // laps over the ground to seal the rim. DoubleSide so you can never see through its back.
   const bedGeo = buildCapDisc(
     planet.radius, center, tWorld, bWorld, normal,
-    (f) => BED_DEPTH * (1 - f * f),
+    (f: number) => BED_DEPTH * (1 - f * f),
     BOWL_LIP_REACH, BOWL_LIP_HEIGHT,
   );
   const bedMat = new THREE.MeshStandardMaterial({ color: BED_COLOR, roughness: 0.95, side: THREE.DoubleSide });
@@ -442,7 +465,7 @@ export function createPond(scene, planet) {
 
   // Resize the depth buffer and tell the shader the new canvas size. main.js calls this once at startup
   // and again on every window resize, passing the renderer's real drawing-buffer size (pixels).
-  function setSize(width, height) {
+  function setSize(width: number, height: number) {
     depthTarget.setSize(width, height);
     waterMat.uniforms.uResolution.value.set(width, height);
   }
@@ -450,7 +473,13 @@ export function createPond(scene, planet) {
   // The depth prepass, run once a frame BEFORE the normal render. Hide the water, draw the whole world
   // into the off-screen buffer (so its depth channel now holds the bed/ground behind where the water
   // will be), then show the water again. The normal render right after this reads that depth.
-  function renderDepth(renderer, sceneRef, cameraRef) {
+  // PerspectiveCamera, not the plainer Camera, because we read near and far off it below. Only the
+  // perspective one has them, and they are what undo the depth buffer's squish.
+  function renderDepth(
+    renderer: THREE.WebGLRenderer,
+    sceneRef: THREE.Scene,
+    cameraRef: THREE.PerspectiveCamera,
+  ) {
     waterMat.uniforms.cameraNear.value = cameraRef.near;
     waterMat.uniforms.cameraFar.value = cameraRef.far;
     mesh.visible = false;
@@ -463,7 +492,7 @@ export function createPond(scene, planet) {
   // Is a world point inside the pond footprint (+ margin)? Project into the pond frame, get angle +
   // distance, compare against the organic rim. The grass carve calls this to clear blades.
   const tmp = new THREE.Vector3();
-  function contains(worldPos, margin = 0) {
+  function contains(worldPos: THREE.Vector3, margin = 0) {
     tmp.copy(worldPos).sub(center);
     const x = tmp.dot(tWorld);
     const y = tmp.dot(bWorld);
@@ -472,7 +501,7 @@ export function createPond(scene, planet) {
   }
 
   // Advance the ripple clock each frame so the waves scroll.
-  function update(dt) {
+  function update(dt: number) {
     waterMat.uniforms.uTime.value += dt;
   }
 
