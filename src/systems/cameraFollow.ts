@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import type { Planet } from "../world/planet.js";
 
 // Player-driven orbit camera on the planet. Yaw and pitch come from drag, not the character's
 // heading, so you can orbit to see his face.
@@ -15,7 +16,21 @@ const LOOK_SENS = 0.005; // radians per pixel of drag
 const MIN_PITCH = 0.13; // ~7 deg, low but keeps the lens above the grass tops
 const MAX_PITCH = 1.2; // ~69 deg, near top-down
 
-export function createCameraFollow(camera, target, input, planet) {
+// The character we orbit around. Only the model matters here, and it is null until the glTF loads.
+type FollowTarget = { model: THREE.Object3D | null };
+
+// Just the one input channel this reads: the drag since last frame, in pixels.
+type LookInput = { consumeLook(): { x: number; y: number } };
+
+// What createCameraFollow hands back. The player controller needs it to move camera-relative.
+export type CameraFollow = ReturnType<typeof createCameraFollow>;
+
+export function createCameraFollow(
+  camera: THREE.Camera,
+  target: FollowTarget,
+  input: LookInput,
+  planet: Planet,
+) {
   let pitch = 0.32; // ~18 deg, camera sits low and looks outward so sky fills the frame
   const forward = new THREE.Vector3(0, 0, 1); // tangent heading, persisted state
   const right = new THREE.Vector3(1, 0, 0); // tangent right, derived each frame
@@ -32,7 +47,7 @@ export function createCameraFollow(camera, target, input, planet) {
     getRight() {
       return right;
     },
-    update(dt) {
+    update(dt: number) {
       if (!target.model) return;
       const p = target.model.position;
 

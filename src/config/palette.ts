@@ -37,6 +37,9 @@ export const COLORS = {
 // Raw sRGB components [0..1] of a hex, for shader uniforms that must stay in DISPLAY space (not
 // linearized like THREE.Color). Used by the sky dome and the grass haze so their colors land
 // on screen exactly as the hex, regardless of tone-mapping.
-export function srgb(hex) {
+//
+// The return type says "exactly three numbers", not just "some numbers". A shader vec3 uniform wants
+// three, so if we ever return the wrong count we hear about it here instead of seeing a broken color.
+export function srgb(hex: number): [number, number, number] {
   return [((hex >> 16) & 255) / 255, ((hex >> 8) & 255) / 255, (hex & 255) / 255];
 }

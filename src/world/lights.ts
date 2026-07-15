@@ -3,7 +3,7 @@ import { COLORS } from "../config/palette.js";
 
 // Outdoor lighting rig: a warm directional sun (key light, casts shadows) plus a
 // HemisphereLight fill. Returns the lights so callers can tweak them.
-export function addLights(scene) {
+export function addLights(scene: THREE.Scene) {
   // DirectionalLight ~ Unity directional light / sun: parallel rays, no falloff.
   const sun = new THREE.DirectionalLight(COLORS.SUN, 1.5); // warm gold key
   sun.position.set(5, 5, 4); // mid-morning angle, gentler shadows

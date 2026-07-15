@@ -1,4 +1,6 @@
 import * as THREE from "three";
+import type { Planet } from "../world/planet.js";
+import type { CameraFollow } from "./cameraFollow.js";
 
 // Drives the character across the planet surface: camera-relative movement along the tangent
 // plane plus locomotion animation (Idle/Walk/Run by move magnitude).
@@ -10,12 +12,32 @@ const GRASS_SPEED = 4.0; // run speed on grass (units/s)
 const PATH_SPEED = 5.2; // run speed on the dirt road
 const WALK_MAX = 0.6; // magnitude at or below this = Walk, above = Run
 
-export function createPlayerController(character, input, cameraFollow, planet, path) {
+// The three things we do to the character: read where it is, turn it, and pick its animation.
+type Player = {
+  model: THREE.Object3D | null;
+  orient(up: THREE.Vector3, forward: THREE.Vector3, dt: number): void;
+  setAction(name: string, fade?: number): void;
+};
+
+// The one input channel we read. Its length is the speed, so it carries walk vs run.
+type MoveInput = { getDirection(): THREE.Vector3 };
+
+// The dirt road, only for asking "is he standing on it" so he can move a bit quicker.
+// world/path.js is still plain JS, and describing the piece we use is all it takes to work with it.
+type Road = { contains(worldPos: THREE.Vector3, margin?: number): boolean };
+
+export function createPlayerController(
+  character: Player,
+  input: MoveInput,
+  cameraFollow: CameraFollow,
+  planet: Planet,
+  path: Road | null,
+) {
   const up = new THREE.Vector3(); // surface normal at the character, reused per frame
   const moveDir = new THREE.Vector3(); // world tangent move direction, reused
 
   return {
-    update(dt) {
+    update(dt: number) {
       if (!character.model) return;
       const p = character.model.position;
 

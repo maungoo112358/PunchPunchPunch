@@ -17,10 +17,17 @@ const CORNER_INSET = 0.2; // pull each corner point in this far toward the face 
 // corner, 1 = at the center). Keeps a corner label inside its own triangle so it does not sit on top of
 // the neighbor triangles that share that corner, and it is where a "T10-2" prop actually lands.
 
+// One triangle of the reference grid. All of these are unit directions from the planet center, so you
+// multiply by a radius to get a real spot.
+type GridFace = { center: THREE.Vector3; corners: THREE.Vector3[] };
+
+// A resolved spot on the planet: where it is, and which way is up there.
+type GridSpot = { position: THREE.Vector3; up: THREE.Vector3 };
+
 // Put a triangle's three corners in a fixed order so "corner 1/2/3" always means the same physical point.
 // Corner 1 is the one nearest the top (highest y = closest to the north pole). The other two are then
 // ordered so 1 -> 2 -> 3 always wraps the same way (counter-clockwise seen from outside the planet).
-function orderCorners(v0, v1, v2, center) {
+function orderCorners(v0: THREE.Vector3, v1: THREE.Vector3, v2: THREE.Vector3, center: THREE.Vector3) {
   const verts = [v0, v1, v2].sort((a, b) => b.y - a.y);
   const top = verts[0];
   const rest = [verts[1], verts[2]];
@@ -29,13 +36,13 @@ function orderCorners(v0, v1, v2, center) {
   // the outward normal. Each remaining corner's angle in that frame tells us its wrap order.
   const t = top.clone().addScaledVector(center, -top.dot(center)).normalize();
   const b = new THREE.Vector3().crossVectors(center, t);
-  const angle = (w) => Math.atan2(w.dot(b), w.dot(t));
+  const angle = (w: THREE.Vector3) => Math.atan2(w.dot(b), w.dot(t));
   rest.sort((a, c) => angle(a) - angle(c));
 
   return [top, rest[0], rest[1]];
 }
 
-export function createPlanetGrid(planetRadius) {
+export function createPlanetGrid(planetRadius: number) {
   // Build the reference shape on a unit sphere; every use scales it (planet radius for placement, a bit
   // higher for the floating dev overlay). Icosphere = evenly sized triangles, no pole pinch.
   const geo = new THREE.IcosahedronGeometry(1, GRID_DETAIL);
@@ -43,7 +50,7 @@ export function createPlanetGrid(planetRadius) {
   const faceCount = pos.count / 3;
 
   // faces[i] = { center, corners: [c1, c2, c3] }, all unit directions from the planet center.
-  const faces = [];
+  const faces: GridFace[] = [];
   for (let f = 0; f < faceCount; f++) {
     const v0 = new THREE.Vector3().fromBufferAttribute(pos, f * 3 + 0);
     const v1 = new THREE.Vector3().fromBufferAttribute(pos, f * 3 + 1);
@@ -60,7 +67,7 @@ export function createPlanetGrid(planetRadius) {
   // Turn a label into a surface spot. "T10" = the center of triangle 10; "T10-2" = corner 2 of triangle
   // 10. Faces and corners are 1-based so they read naturally. Returns { position, up } (up = the surface
   // normal, so a prop can stand straight out of the ground), or null if the label is malformed.
-  function gridPoint(ref) {
+  function gridPoint(ref: string): GridSpot | null {
     const m = /^T(\d+)(?:-([123]))?$/i.exec(ref.trim());
     if (!m) return null;
     const face = faces[parseInt(m[1], 10) - 1];

@@ -38,10 +38,23 @@ const FILES = {
   rockpath_sq_1: "RockPath_Square_Small_1", rockpath_sq_2: "RockPath_Square_Small_2", rockpath_sq_3: "RockPath_Square_Small_3", rockpath_sq_thin: "RockPath_Square_Thin", rockpath_sq_wide: "RockPath_Square_Wide",
 };
 
+// Every valid short name, worked out from the FILES map above rather than typed out again. `keyof
+// typeof FILES` means "the key names of that object", so this list updates itself when you add a line.
+// Use this type anywhere a prop name is expected and a typo becomes an error instead of a silent
+// missing prop.
+export type PropName = keyof typeof FILES;
+
 // Build the final short name -> URL map (relative to public/models/, which is served at /models/).
+//
+// The `as` at the end is us overruling the typechecker, and it needs explaining. Object.fromEntries
+// only promises "an object with string keys", because in plain JS it cannot know what keys it will be
+// handed. That would lose every name above and let PROP_CATALOG.tpyo pass unnoticed. We can see the
+// keys come straight from FILES, so we say so. This is the one spot where we know more than the
+// compiler, and it is why PropName exists.
 export const PROP_CATALOG = Object.fromEntries(
   Object.entries(FILES).map(([name, file]) => [name, `${BASE}${file}.gltf`]),
-);
+) as Record<PropName, string>;
 
-// Every short name, handy for the editor's "add prop" list later.
-export const PROP_NAMES = Object.keys(PROP_CATALOG);
+// Every short name, handy for the editor's "add prop" list later. Object.keys has the same blind spot
+// as fromEntries above and only promises plain strings, so we narrow it back to real prop names.
+export const PROP_NAMES = Object.keys(PROP_CATALOG) as PropName[];

@@ -9,7 +9,11 @@ import { COLORS } from "../config/palette.js";
 const PLANET_RADIUS = 36; // bigger = gentler curve, larger-reading world
 const PLANET_DETAIL = 11; // icosphere subdivisions: higher = rounder, fewer facets
 
-export function createPlanet(scene) {
+// What createPlanet hands back. Written as "the type of whatever createPlanet returns" so it can never
+// drift out of step with the real thing. Other files ask for a Planet instead of describing it again.
+export type Planet = ReturnType<typeof createPlanet>;
+
+export function createPlanet(scene: THREE.Scene) {
   const center = new THREE.Vector3(0, 0, 0);
 
   // Use an icosphere, not a UV-sphere: even vertex spread, no pole pinch, flat-shaded facets for free.
@@ -24,13 +28,13 @@ export function createPlanet(scene) {
   scene.add(mesh);
 
   // Surface normal (up) at a world position, written into target to avoid per-frame allocs.
-  function upAt(pos, target) {
+  function upAt(pos: THREE.Vector3, target: THREE.Vector3) {
     return target.copy(pos).sub(center).normalize();
   }
 
   // Snap a point to exactly radius from center. Controller calls this each frame after
   // moving along the tangent so the character never drifts off the sphere.
-  function placeOnSurface(pos) {
+  function placeOnSurface(pos: THREE.Vector3) {
     return pos.sub(center).setLength(PLANET_RADIUS).add(center);
   }
 
