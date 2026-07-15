@@ -85,7 +85,7 @@ const fragmentShader = /* glsl */ `
   }
 `;
 
-export function addSky(scene, camera) {
+export function addSky(scene: THREE.Scene, camera: THREE.Camera) {
   const mat = new THREE.ShaderMaterial({
     uniforms: {
       uHorizon: { value: new THREE.Vector3(...srgb(COLORS.SKY_HORIZON)) }, // raw sRGB pale blue (decoupled from grass haze)
@@ -115,7 +115,7 @@ export function addSky(scene, camera) {
   scene.add(mesh);
 
   return {
-    update(dt) {
+    update(dt: number) {
       mesh.position.copy(camera.position); // keep the dome centered on the viewer
       mat.uniforms.uTime.value += dt || 0; // drift the clouds
       mat.uniforms.uUp.value.copy(camera.up); // align gradient/clouds to the player's local up

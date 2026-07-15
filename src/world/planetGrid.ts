@@ -42,6 +42,9 @@ function orderCorners(v0: THREE.Vector3, v1: THREE.Vector3, v2: THREE.Vector3, c
   return [top, rest[0], rest[1]];
 }
 
+// What createPlanetGrid hands back. The dev-only gizmo that draws the grid asks for one of these.
+export type PlanetGrid = ReturnType<typeof createPlanetGrid>;
+
 export function createPlanetGrid(planetRadius: number) {
   // Build the reference shape on a unit sphere; every use scales it (planet radius for placement, a bit
   // higher for the floating dev overlay). Icosphere = evenly sized triangles, no pole pinch.

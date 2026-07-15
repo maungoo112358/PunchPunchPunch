@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import type { PlanetGrid } from "./planetGrid.js";
 
 // The visible reference grid: white triangle edges + a big number at each triangle center, floating just
 // above the ground. It is only a rough anchor for placing props ("add a tree at T25"); the precise
@@ -13,7 +14,7 @@ const LINE_COLOR = 0xffffff;
 const NUMBER_COLOR = "#ffffff";
 const FACE_SCALE = 2.2; // world size of a triangle number (eye-tune)
 
-export function createGridGizmo(scene, grid) {
+export function createGridGizmo(scene: THREE.Scene, grid: PlanetGrid) {
   const R = grid.radius + LIFT;
   const group = new THREE.Group();
   group.visible = false;
@@ -31,8 +32,15 @@ export function createGridGizmo(scene, grid) {
 
   // Each number is a little canvas chip turned into a camera-facing sprite. Cache textures by their text
   // so we only draw each number once.
-  const texCache = new Map();
-  function roundRect(g, x, y, w, h, r) {
+  const texCache = new Map<string, THREE.CanvasTexture>();
+  function roundRect(
+    g: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    r: number,
+  ) {
     g.beginPath();
     g.moveTo(x + r, y);
     g.arcTo(x + w, y, x + w, y + h, r);
@@ -41,13 +49,16 @@ export function createGridGizmo(scene, grid) {
     g.arcTo(x, y, x + w, y, r);
     g.closePath();
   }
-  function labelTexture(text) {
+  function labelTexture(text: string) {
     const hit = texCache.get(text);
     if (hit) return hit;
     const canvas = document.createElement("canvas");
     canvas.width = 128;
     canvas.height = 128;
-    const g = canvas.getContext("2d");
+    // The ! means "I know this is never null, stop worrying". getContext can hand back null if the
+    // browser refuses to make a 2D context, which only really happens if the canvas is already being
+    // used for something else like WebGL. This one is brand new two lines up, so it cannot happen.
+    const g = canvas.getContext("2d")!;
     g.fillStyle = "rgba(0,0,0,0.55)"; // dark chip so the number reads over bare ground or the tan path
     roundRect(g, 12, 30, 104, 68, 16);
     g.fill();
@@ -73,7 +84,7 @@ export function createGridGizmo(scene, grid) {
   });
 
   return {
-    setVisible(v) {
+    setVisible(v: boolean) {
       group.visible = v;
     },
   };
