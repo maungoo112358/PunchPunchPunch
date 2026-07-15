@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import type { Planet } from "./planet.js";
 
 // A dirt walking path: one closed loop that wanders once around the planet and meets back up with
 // itself, so it never dead-ends. Everything that needs to know where the road is (the dirt mesh here,
@@ -52,7 +53,7 @@ const AXIS_T = new THREE.Vector3().crossVectors(REF, PATH_AXIS).normalize();
 const AXIS_B = new THREE.Vector3().crossVectors(PATH_AXIS, AXIS_T);
 
 // The centerline latitude (angle from the axis) at a given angle around the loop.
-function betaAt(phi) {
+function betaAt(phi: number) {
   return (
     PATH_LAT +
     MEANDER1_AMP * Math.sin(MEANDER1_FREQ * phi + MEANDER1_PHASE) +
@@ -62,14 +63,14 @@ function betaAt(phi) {
 }
 
 // Gentle swell and pinch of the whole road (both edges move together), low frequency.
-function swellAt(phi) {
+function swellAt(phi: number) {
   return 0.5 * (Math.sin(WIDTH1_FREQ * phi + WIDTH1_PHASE) + Math.sin(WIDTH2_FREQ * phi + WIDTH2_PHASE));
 }
 
 // Jagged in-and-out wander of ONE edge. Several whole-number frequencies stacked so it looks random but
 // still lines up after a full loop. `side` shifts all the phases so the left and right edges never match,
 // which is what stops the road looking like a clean even strip. Returns roughly -1..1.
-function raggedAt(phi, side) {
+function raggedAt(phi: number, side: number) {
   const s = side > 0 ? 0.0 : 7.3; // phase offset so the two edges differ
   return (
     0.45 * Math.sin(9 * phi + s + 0.3) +
@@ -81,13 +82,13 @@ function raggedAt(phi, side) {
 
 // Half width on one side of the centerline: base + gentle overall swell + this edge's own jagged wander.
 // side is +1 for the +latitude edge, -1 for the other. Clamped so the road never pinches shut.
-function edgeAt(phi, side) {
+function edgeAt(phi: number, side: number) {
   const w = PATH_HALF_WIDTH + WIDTH_VAR * swellAt(phi) + EDGE_RAGGED * raggedAt(phi, side);
   return Math.max(w, 0.3);
 }
 
 // Unit direction on the sphere at (angle-around phi, latitude beta).
-function dirAt(phi, beta, out) {
+function dirAt(phi: number, beta: number, out: THREE.Vector3) {
   const cp = Math.cos(phi), sp = Math.sin(phi);
   // inPlane is the direction around the axis at this phi (on the axis's equator).
   const ix = AXIS_T.x * cp + AXIS_B.x * sp;
@@ -101,7 +102,10 @@ function dirAt(phi, beta, out) {
   );
 }
 
-export function createPath(scene, planet) {
+// What createPath hands back. The grass carve and the movement speed both ask it the same question.
+export type Path = ReturnType<typeof createPath>;
+
+export function createPath(scene: THREE.Scene, planet: Planet) {
   const R = planet.radius;
 
   // Build the ribbon: walk around the loop, and at each step lay a whole ROW of points across the road
@@ -185,7 +189,7 @@ export function createPath(scene, planet) {
   // latitude against the centerline's, and check that gap against the half width here. The grass carve
   // and the movement-speed check both call this, so the road they see matches the dirt mesh.
   const d = new THREE.Vector3();
-  function contains(worldPos, margin = 0) {
+  function contains(worldPos: THREE.Vector3, margin = 0) {
     d.copy(worldPos).normalize();
     const beta = Math.acos(THREE.MathUtils.clamp(d.dot(PATH_AXIS), -1, 1));
     const phi = Math.atan2(d.dot(AXIS_B), d.dot(AXIS_T));

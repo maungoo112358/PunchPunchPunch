@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { COLORS, srgb } from "../config/palette.js";
+import type { Planet } from "./planet.js";
 
 // Whole-sphere GPU grass. The planet is finite, so scatter every blade over the
 // whole sphere once (no streaming) and let the opaque planet occlude the back.
@@ -12,8 +13,23 @@ const BLADE_JITTER = 0.13; // random tangent offset so the Fibonacci spiral does
 const CARVE_MARGIN = 0.0; // base carve line: grass can reach the exact water edge (fringe adds the poke)
 const SHORE_FRINGE = 0.7; // ragged shore: how far blades randomly poke IN over the water, per blade
 
+// The pond and the dirt road both answer the same question: is this spot inside me? Grass only ever
+// asks that, so one shape describes both. world/pond.js is still plain JS and it slots in here anyway,
+// because in TypeScript matching the shape is all it takes.
+type Carve = { contains(worldPos: THREE.Vector3, margin?: number): boolean };
+
+// A circle of cleared ground under a prop, the way the caller hands it to us.
+type PropFootprint = { center: THREE.Vector3; radius: number };
+
+// The same circle with the radius already squared, so the blade loop can compare squared distances and
+// skip a square root on every one of the 400,000 blades.
+type PreppedFootprint = { center: THREE.Vector3; r2: number };
+
+// The character, so the grass can part around him. Null until the glTF finishes loading.
+type GrassTarget = { model: THREE.Object3D | null };
+
 // Seeded RNG so the layout is deterministic across reloads.
-function mulberry32(seed) {
+function mulberry32(seed: number) {
   let a = seed >>> 0;
   return function () {
     a = (a + 0x6d2b79f5) | 0;
@@ -33,7 +49,12 @@ const BLADE_INDICES = [0, 1, 2, 2, 1, 3, 2, 3, 4, 4, 3, 5, 4, 5, 6];
 
 // Scatter blade bases with a Fibonacci (golden-spiral) distribution:
 // deterministic, near-uniform, no pole pinch (lat/long would clump at the poles).
-function buildGrassGeometry(radius, pond, path, propFootprints) {
+function buildGrassGeometry(
+  radius: number,
+  pond: Carve | null,
+  path: Carve | null,
+  propFootprints: PreppedFootprint[],
+) {
   const geo = new THREE.InstancedBufferGeometry();
   geo.setAttribute("position", new THREE.BufferAttribute(BLADE_POSITIONS, 3));
   geo.setIndex(BLADE_INDICES);
@@ -232,11 +253,18 @@ const fragmentShader = /* glsl */ `
 
 // Turn a list of { center, radius } prop footprints into { center, r2 } so the blade loop can compare
 // squared distances (no per-blade square root).
-function prepFootprints(list) {
+function prepFootprints(list: PropFootprint[]): PreppedFootprint[] {
   return list.map((f) => ({ center: f.center, r2: f.radius * f.radius }));
 }
 
-export function addGrass(scene, target, planet, pond, path, propFootprints = []) {
+export function addGrass(
+  scene: THREE.Scene,
+  target: GrassTarget | null,
+  planet: Planet,
+  pond: Carve | null,
+  path: Carve | null,
+  propFootprints: PropFootprint[] = [],
+) {
   const material = new THREE.ShaderMaterial({
     uniforms: {
       uBaseColor: { value: new THREE.Color(COLORS.GRASS_BASE) },
@@ -274,18 +302,18 @@ export function addGrass(scene, target, planet, pond, path, propFootprints = [])
   scene.add(mesh);
 
   return {
-    update(dt) {
+    update(dt: number) {
       material.uniforms.uTime.value += dt;
       if (target && target.model) {
         material.uniforms.uPlayerPos.value.copy(target.model.position); // grass parts around him
       }
     },
-    setVisible(v) {
+    setVisible(v: boolean) {
       mesh.visible = v; // the editor hides the grass in editor mode
     },
     // Rebuild the whole blade field with a new set of prop footprints (called when props move on save).
     // Heavy (regenerates every blade), so only ever on an explicit save, never per frame.
-    rebuild(list) {
+    rebuild(list: PropFootprint[]) {
       const newGeo = buildGrassGeometry(planet.radius, pond, path, prepFootprints(list));
       mesh.geometry.dispose();
       mesh.geometry = newGeo;
