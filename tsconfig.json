@@ -1,0 +1,49 @@
+{
+  // TypeScript settings. Note that Vite never reads this file to build the game: it strips the types out
+  // with esbuild and throws them away without checking them. This file is what `npm run typecheck` and
+  // your editor use. That is why a type error will not stop the dev server, and why you want the
+  // typecheck running in a second terminal.
+  "compilerOptions": {
+    // What JS features we are allowed to use, and what the browser is assumed to have. ES2022 is safe
+    // for every browser that can run WebGL2.
+    "target": "ES2022",
+    "module": "ESNext",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+
+    // Resolve imports the way a bundler does, so extensionless imports like "./world/sky" work and
+    // package "exports" maps (three uses one) are respected.
+    "moduleResolution": "bundler",
+
+    // All the safety checks on. Nothing can be implicitly a loose "any", and null has to be handled.
+    // This is the closest we get to the C# compiler being strict with you.
+    "strict": true,
+
+    // We only ever check types, we never ask tsc to produce JS. Vite does all the real building.
+    "noEmit": true,
+
+    // The two lines that let us convert one file at a time. allowJs means .ts and .js files can import
+    // each other freely, and checkJs off means the .js files we have not converted yet are ignored.
+    // So errors only ever show up in files we have already renamed.
+    "allowJs": true,
+    "checkJs": false,
+
+    // esbuild compiles each file on its own and never looks at the others, so we ban the few things
+    // that only work if the compiler can see the whole program at once.
+    "isolatedModules": true,
+
+    // Makes you write `import type { Foo }` when you are only importing a type, not a real value.
+    // Sounds fussy, but it is what tells esbuild the import can be safely deleted instead of left in
+    // the bundle pointing at nothing.
+    "verbatimModuleSyntax": true,
+
+    // Don't typecheck inside node_modules. Big speedup and their problems are not ours.
+    "skipLibCheck": true,
+
+    // Windows and WSL disagree about upper and lower case in paths. This makes a wrong-case import an
+    // error here instead of a mystery break on a case-sensitive machine later.
+    "forceConsistentCasingInFileNames": true
+  },
+
+  // Only our own source. vite.config.js stays plain JS for now.
+  "include": ["src"]
+}
