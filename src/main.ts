@@ -5,7 +5,6 @@ import { createStats } from "./core/stats.js";
 import { addLights } from "./world/lights.js";
 import { createPlanet } from "./world/planet.js";
 import { createPath } from "./world/path.js";
-import { createPond } from "./world/pond.js";
 import { addSky } from "./world/sky.js";
 import { addGrass } from "./world/grass.js";
 import { addHeroLight } from "./world/heroLight.js";
@@ -35,16 +34,11 @@ scene.fog = new THREE.Fog(COLORS.FOG, 60, 200);
 // Camera in the scene graph so its child hero light counts.
 scene.add(camera);
 
-// Pond parked for now: too small and needs a stable camera + a Genshin-style water pass before it earns
-// its place. Flip to true to bring the whole pond back (dent, water, grass carve, depth prepass).
-const SHOW_POND = false;
-
 // --- World ---
 const { sun } = addLights(scene);
 const planet = createPlanet(scene); // tiny spherical world
 const grid = createPlanetGrid(planet.radius); // shared "T10 / T10-2" reference for placing props (pure math)
 const path = createPath(scene, planet); // dirt road loop; grass carves to it, speed reads it
-const pond = SHOW_POND ? createPond(scene, planet) : null; // water disc (fresnel uses the built-in camera uniform)
 const sky = addSky(scene, camera); // flat blue dome + clouds, follows the camera
 addHeroLight(camera); // warm fill on the character, follows the view
 
@@ -58,8 +52,8 @@ const character = new Character(scene, "/models/Wizard.gltf", spawn);
 const propFootprints = footprintsFromEntries(placements, grid);
 
 // Grass over the whole planet; needs the character (parting) + planet (radius/normals).
-// pond + path carve their footprints clear of blades (null pond = no carve); propFootprints clears props.
-const grass = addGrass(scene, character, planet, pond, path, propFootprints);
+// path carves its footprint clear of blades; propFootprints clears props.
+const grass = addGrass(scene, character, planet, path, propFootprints);
 
 // Load + place every prop from the YAML.
 const props = createProps(scene, grid);
@@ -94,17 +88,9 @@ type Updatable = { update(dt: number): void };
 
 // Each update(dt) ticks every frame; this array is the Unity update loop.
 // Order: drive the character first, then camera/shadow track its new pos.
-// filter drops the pond when it is parked (null). The test is still plain Boolean; the "u is Updatable"
-// part is us telling TypeScript what filtering leaves behind, which it cannot work out on its own.
-const updatables = [controller, character, cameraFollow, pond, sunFollow, sky, grass, stats].filter(
+const updatables = [controller, character, cameraFollow, sunFollow, sky, grass, stats].filter(
   (u): u is Updatable => Boolean(u),
 );
-
-// Size the pond's depth buffer to the real canvas pixel size (drawing buffer = window size * pixel
-// ratio). Kept in sync on resize below.
-const drawSize = new THREE.Vector2();
-renderer.getDrawingBufferSize(drawSize);
-pond?.setSize(drawSize.x, drawSize.y);
 
 const clock = new THREE.Clock(); // getDelta() ~ Time.deltaTime
 renderer.setAnimationLoop(() => {
@@ -118,7 +104,6 @@ renderer.setAnimationLoop(() => {
   } else {
     for (const u of updatables) u.update?.(dt);
   }
-  pond?.renderDepth(renderer, scene, camera); // fill the depth buffer before the visible frame
   renderer.render(scene, camera);
 });
 
@@ -127,6 +112,4 @@ window.addEventListener("resize", () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.getDrawingBufferSize(drawSize);
-  pond?.setSize(drawSize.x, drawSize.y); // keep the depth buffer matched to the canvas
 });

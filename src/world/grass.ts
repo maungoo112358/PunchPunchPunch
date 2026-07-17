@@ -14,12 +14,12 @@ import fragmentShader from "../shaders/grass.frag?raw";
 
 const BLADE_COUNT = 400000; // total blades (front ~half visible); tune by eye + FPS
 const BLADE_JITTER = 0.13; // random tangent offset so the Fibonacci spiral doesn't read as a lattice
-const CARVE_MARGIN = 0.0; // base carve line: grass can reach the exact water edge (fringe adds the poke)
-const SHORE_FRINGE = 0.7; // ragged shore: how far blades randomly poke IN over the water, per blade
+const CARVE_MARGIN = 0.0; // base carve line: grass can reach the exact road edge (fringe adds the poke)
+const SHORE_FRINGE = 0.7; // ragged edge: how far blades randomly poke IN over the road, per blade
 
-// The pond and the dirt road both answer the same question: is this spot inside me? Grass only ever
-// asks that, so one shape describes both. world/pond.js is still plain JS and it slots in here anyway,
-// because in TypeScript matching the shape is all it takes.
+// The dirt road answers a simple question: is this spot inside me? Grass asks that to clear blades off
+// the path. It is a shape, not a named class, so anything with a contains() fits here. In TypeScript
+// matching the shape is all it takes.
 type Carve = { contains(worldPos: THREE.Vector3, margin?: number): boolean };
 
 // A circle of cleared ground under a prop, the way the caller hands it to us.
@@ -53,7 +53,7 @@ const BLADE_INDICES = [0, 1, 2, 2, 1, 3, 2, 3, 4, 4, 3, 5, 4, 5, 6];
 
 // Scatter blade bases with a Fibonacci (golden-spiral) distribution:
 // deterministic, near-uniform, no pole pinch (lat/long would clump at the poles).
-function buildGrassGeometry( radius: number, pond: Carve | null, path: Carve | null, propFootprints: PreppedFootprint[], ){
+function buildGrassGeometry( radius: number, path: Carve | null, propFootprints: PreppedFootprint[], ){
   const geo = new THREE.InstancedBufferGeometry();
   geo.setAttribute("position", new THREE.BufferAttribute(BLADE_POSITIONS, 3));
   geo.setIndex(BLADE_INDICES);
@@ -91,20 +91,18 @@ function buildGrassGeometry( radius: number, pond: Carve | null, path: Carve | n
       .setLength(radius); // snap back onto the surface
 
     // Draw every blade's randoms up front so the RNG stream stays fixed: carving must only
-    // delete pond blades, not reshuffle the rest of the field. carveJitter is drawn here too
+    // delete carved blades, not reshuffle the rest of the field. carveJitter is drawn here too
     // (unconditionally) for the same reason, even though it only matters at the rim.
     const rot = rng() * Math.PI * 2;
     const h = 0.9 + rng() * 0.6; // ~0.9..1.5 tall
     const ph = rng() * Math.PI * 2;
-    const carveJitter = rng(); // 0..1, ragged-shore randomness per blade
+    const carveJitter = rng(); // 0..1, ragged-edge randomness per blade
 
-    // Carve the pond, but with a ragged edge: each blade's cut line is pulled inward by a random
-    // amount, so near the rim the grass thins into a fringe and some blades survive INTO the water
-    // (they poke over the waterline and break up the clean bright shoreline ring). A negative margin
-    // means "keep this blade even if it sits up to SHORE_FRINGE units inside the water edge".
+    // Carve the dirt road with a ragged edge: each blade's cut line is pulled inward by a random
+    // amount, so near the rim the grass thins into a fringe and some blades survive over the edge,
+    // breaking up a too-clean line. A negative margin means "keep this blade even if it sits up to
+    // SHORE_FRINGE units inside the road edge".
     const carveMargin = CARVE_MARGIN - carveJitter * SHORE_FRINGE;
-    if (pond && pond.contains(base, carveMargin)) continue;
-    // Same ragged carve for the dirt road, so grass clears off the path and frays over its edge.
     if (path && path.contains(base, carveMargin)) continue;
     // Clear grass in a small circle under each placed prop, so no blades poke up in front of it.
     let underProp = false;
@@ -150,7 +148,6 @@ export function addGrass(
   scene: THREE.Scene,
   target: GrassTarget | null,
   planet: Planet,
-  pond: Carve | null,
   path: Carve | null,
   propFootprints: PropFootprint[] = [],
 ) {
@@ -186,7 +183,7 @@ export function addGrass(
     fog: true,
   });
 
-  const geo = buildGrassGeometry(planet.radius, pond, path, prepFootprints(propFootprints));
+  const geo = buildGrassGeometry(planet.radius, path, prepFootprints(propFootprints));
   const mesh = new THREE.Mesh(geo, material);
   scene.add(mesh);
 
@@ -203,7 +200,7 @@ export function addGrass(
     // Rebuild the whole blade field with a new set of prop footprints (called when props move on save).
     // Heavy (regenerates every blade), so only ever on an explicit save, never per frame.
     rebuild(list: PropFootprint[]) {
-      const newGeo = buildGrassGeometry(planet.radius, pond, path, prepFootprints(list));
+      const newGeo = buildGrassGeometry(planet.radius, path, prepFootprints(list));
       mesh.geometry.dispose();
       mesh.geometry = newGeo;
     },
