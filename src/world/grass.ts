@@ -1,6 +1,10 @@
 import * as THREE from "three";
 import { COLORS, srgb } from "../config/palette.js";
 import type { Planet } from "./planet.js";
+// The shaders live in their own files now. "?raw" is a Vite thing: it hands you the file's text as a
+// plain string instead of trying to run it, which is exactly what a ShaderMaterial wants.
+import vertexShader from "../shaders/grass.vert?raw";
+import fragmentShader from "../shaders/grass.frag?raw";
 
 // Whole-sphere GPU grass. The planet is finite, so scatter every blade over the
 // whole sphere once (no streaming) and let the opaque planet occlude the back.
@@ -132,119 +136,6 @@ function buildGrassGeometry( radius: number, pond: Carve | null, path: Carve | n
   geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), radius + 2);
   return geo;
 }
-
-const vertexShader = /* glsl */ `
-  attribute vec3 aBase;     // world position of this blade's base (on the sphere surface)
-  attribute float aRotation;
-  attribute float aHeight;
-  attribute float aPhase;
-
-  varying float vHeight;
-  varying vec3 vNormal;
-
-  uniform float uTime;
-  uniform vec3 uWindDir;        // world-space wind; projected into each blade's tangent plane
-  uniform float uWindFrequency;
-  uniform float uWindAmplitude;
-  uniform float uWindScale;
-  uniform float uGustFrequency;
-  uniform float uGustScale;
-
-  uniform vec3 uPlayerPos;      // character world position
-  uniform float uPlayerRadius;  // how far the parting reaches
-  uniform float uPlayerStrength;// how far blades bend away
-
-  #include <fog_pars_vertex>
-
-  void main() {
-    vHeight = position.y; // base geom height is 1.0, so y is the height fraction
-
-    // Per-blade surface frame (T, B, N) derived from the base.
-    vec3 N = normalize(aBase); // this blade's up = surface normal
-    vec3 ref = abs(N.y) < 0.99 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0); // flips near the poles
-    vec3 T = normalize(cross(ref, N));
-    vec3 B = cross(N, T);
-
-    // Spin the blade in its tangent plane: widthAxis widens it, faceAxis is the card's facing.
-    float s = sin(aRotation);
-    float c = cos(aRotation);
-    vec3 widthAxis = T * c + B * s;
-    vec3 faceAxis = -T * s + B * c;
-
-    // Build the blade: width along widthAxis, height along the surface normal.
-    vec3 worldPos = aBase + widthAxis * position.x + N * (position.y * aHeight);
-
-    // Lighting normal: card normal biased toward up for a soft up-lit look.
-    vNormal = normalize(faceAxis * 0.8 + N * 0.6);
-
-    // Wind: project world wind into the tangent plane, bend the tip along it.
-    // Two sine octaves + a slow gust, scaled by vHeight so the root stays planted.
-    vec3 windT = uWindDir - N * dot(uWindDir, N);
-    windT = normalize(windT + 1e-4 * T); // guard if wind ~parallel to N
-    float spatial = aBase.x + aBase.y + aBase.z; // varies smoothly over the sphere, no tiling
-    float t = uTime * uWindFrequency;
-    float wave1 = sin(t + spatial * uWindScale + aPhase);
-    float wave2 = sin(t * 1.7 + dot(aBase, vec3(0.7, -1.3, 0.5)) * uWindScale * 2.0 + aPhase * 1.3);
-    float wave = wave1 * 0.7 + wave2 * 0.3;
-    float gust = 0.6 + 0.4 * sin(uTime * uGustFrequency + spatial * uGustScale);
-    float bend = wave * gust * uWindAmplitude * vHeight;
-    worldPos += windT * bend;
-
-    // Player parting: blades within radius bend away along the tangent, plus a slight press-down.
-    vec3 toBlade = aBase - uPlayerPos;
-    float pdist = length(toBlade);
-    float influence = 1.0 - smoothstep(0.0, uPlayerRadius, pdist); // 1 near the player, 0 at the radius
-    vec3 pushDir = toBlade - N * dot(toBlade, N); // flatten into the tangent plane
-    float pl = length(pushDir);
-    pushDir = pl > 0.001 ? pushDir / pl : vec3(0.0);
-    float push = influence * uPlayerStrength * vHeight;
-    worldPos += pushDir * push;
-    worldPos -= N * (push * 0.35); // trample/flatten near his feet
-
-    vec4 mvPosition = modelViewMatrix * vec4(worldPos, 1.0);
-    gl_Position = projectionMatrix * mvPosition;
-
-    #include <fog_vertex>
-  }
-`;
-
-// Fragment shader: the locked cozy-morning look.
-const fragmentShader = /* glsl */ `
-  uniform vec3 uBaseColor;
-  uniform vec3 uTipColor;
-  uniform vec3 uSunDir;
-  uniform vec3 uSunColor;
-  uniform vec3 uSkyColor;
-  uniform float uAmbientStrength;
-  uniform float uSunStrength;
-  uniform float uTipGlow;
-  uniform vec3 uHazeColor; // raw sRGB haze (display space), shared with the sky horizon
-
-  varying float vHeight;
-  varying vec3 vNormal;
-
-  #include <fog_pars_fragment>
-
-  void main() {
-    vec3 albedo = mix(uBaseColor, uTipColor, vHeight);
-
-    vec3 N = normalize(vNormal);
-    float ndl = abs(dot(N, uSunDir)); // two-sided
-    float sun = ndl * 0.5 + 0.5; // half-Lambert wrap
-
-    vec3 ambient = uSkyColor * uAmbientStrength;
-    vec3 color = albedo * (ambient + uSunColor * sun * uSunStrength);
-    color += albedo * pow(vHeight, 4.0) * uTipGlow; // fake tip translucency
-
-    gl_FragColor = vec4(color, 1.0);
-    #include <tonemapping_fragment>
-    #include <colorspace_fragment>
-    // Haze blended last, in display space, toward a raw sRGB color, so far grass ends at the
-    // same on-screen color as the sky horizon (uHazeColor == sky uHorizon). No tone-map shift.
-    float fogFactor = smoothstep(fogNear, fogFar, vFogDepth);
-    gl_FragColor.rgb = mix(gl_FragColor.rgb, uHazeColor, fogFactor);
-  }
-`;
 
 // Turn a list of { center, radius } prop footprints into { center, r2 } so the blade loop can compare
 // squared distances (no per-blade square root).

@@ -1,4 +1,4 @@
-# Key bindings for the dev placement editor (press M). Change a value, refresh, done — no code edits.
+# Key bindings for the dev placement editor (press M). Change a value, refresh, done. No code edits.
 #
 # Values are KeyboardEvent.code names: letters are "KeyA".."KeyZ", arrows "ArrowLeft" etc, brackets
 # "BracketLeft"/"BracketRight", "Tab", "Escape". "save" may include a "Ctrl+" prefix.
