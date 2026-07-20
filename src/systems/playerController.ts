@@ -1,64 +1,64 @@
 import * as THREE from "three";
 import type { Planet } from "../world/planet.js";
 import type { CameraFollow } from "./cameraFollow.js";
+import { createPlayerState, copyPlayerState, stepPlayer, type PlayerState, type Road } from "./sim.js";
 
-// Drives the character across the planet surface: camera-relative movement along the tangent
-// plane plus locomotion animation (Idle/Walk/Run by move magnitude).
-// Movement: step along the flat tangent, then snap back onto the sphere (planet.placeOnSurface).
-// One frame's off-surface drift is negligible and the snap erases it (great-circle walk).
-// Run speed depends on the ground: a touch slower slogging through grass, a touch quicker on the packed
-// dirt road. Walk still scales down from these by the move magnitude.
-const GRASS_SPEED = 4.0; // run speed on grass (units/s)
-const PATH_SPEED = 5.2; // run speed on the dirt road
-const WALK_MAX = 0.6; // magnitude at or below this = Walk, above = Run
+// Drives the local player. Two jobs, deliberately split, because they run on different clocks:
+//   update(dt)     turns what you are pushing into a world direction and steps the sim. Fixed tick.
+//   render(alpha)  blends the last two sim results onto the model. Every drawn frame.
+// The split is what makes the movement replayable. The sim only ever sees a fixed dt, and the wobble
+// of real frame times is absorbed by the blend instead of leaking into the simulation.
 
 // The three things we do to the character: read where it is, turn it, and pick its animation.
 type Player = {
   model: THREE.Object3D | null;
-  orient(up: THREE.Vector3, forward: THREE.Vector3, dt: number): void;
+  orient(up: THREE.Vector3, forward: THREE.Vector3): void;
   setAction(name: string, fade?: number): void;
 };
 
 // The one input channel we read. Its length is the speed, so it carries walk vs run.
 type MoveInput = { getDirection(): THREE.Vector3 };
 
-// The dirt road, only for asking "is he standing on it" so he can move a bit quicker.
-// world/path.js is still plain JS, and describing the piece we use is all it takes to work with it.
-type Road = { contains(worldPos: THREE.Vector3, margin?: number): boolean };
-
-export function createPlayerController( character: Player, input: MoveInput, cameraFollow: CameraFollow, planet: Planet, path: Road | null, ) {
-  const up = new THREE.Vector3(); // surface normal at the character, reused per frame
-  const moveDir = new THREE.Vector3(); // world tangent move direction, reused
+export function createPlayerController( character: Player, input: MoveInput, cameraFollow: CameraFollow, planet: Planet, path: Road | null, spawn: THREE.Vector3, ) {
+  const state = createPlayerState(spawn);
+  const previous = createPlayerState(spawn); // where he was one tick ago, the other end of the blend
+  const moveDir = new THREE.Vector3(); // world tangent move direction, reused per tick
+  const up = new THREE.Vector3(); // surface normal under the drawn position, reused per frame
+  const drawPos = new THREE.Vector3();
+  const drawFwd = new THREE.Vector3();
 
   return {
+    state,
+
     update(dt: number) {
-      if (!character.model) return;
-      const p = character.model.position;
+      copyPlayerState(state, previous); // this tick's start is the blend's "from"
 
       const intent = input.getDirection(); // x = strafe, z = forward; magnitude = speed (0..1)
-      const speed = intent.length();
+      // Resolve camera-relative intent into a world direction here, outside the sim. Your camera is
+      // yours alone and the server must never need it, so what the sim (and later the server) sees is
+      // already a direction on the planet. Multiplying keeps the magnitude, so walking stays a walk.
+      const fwd = cameraFollow.getForward();
+      const right = cameraFollow.getRight();
+      moveDir.copy(fwd).multiplyScalar(intent.z).addScaledVector(right, intent.x);
 
-      planet.upAt(p, up); // up = outward normal
+      stepPlayer(state, { dir: moveDir }, planet, path, dt);
+    },
 
-      if (speed > 0) {
-        // Build the world move direction from the camera's tangent basis (camera-relative).
-        const fwd = cameraFollow.getForward();
-        const right = cameraFollow.getRight();
-        moveDir.copy(fwd).multiplyScalar(intent.z) .addScaledVector(right, intent.x); // keeps magnitude, so walk/analog move slower
+    // alpha is how far we are between the previous tick and the current one, 0 to 1. At 30 ticks a
+    // second and 120 frames a second this is what stops the character stepping four times per move.
+    render(alpha: number) {
+      if (!character.model) return;
+      drawPos.lerpVectors(previous.position, state.position, alpha);
+      drawFwd.lerpVectors(previous.forward, state.forward, alpha);
+      if (drawFwd.lengthSq() < 1e-8) drawFwd.copy(state.forward); // opposite facings cancelled out
 
-        // Step along the tangent, then re-project onto the surface. Speed depends on the ground under
-        // the character: the dirt road is quicker than the grass.
-        const runSpeed = path && path.contains(p) ? PATH_SPEED : GRASS_SPEED;
-        p.addScaledVector(moveDir, runSpeed * dt);
-        planet.placeOnSurface(p);
-
-        planet.upAt(p, up); // up changed after moving, recompute before orienting
-        character.orient(up, moveDir, dt); // face travel direction, stand up along new normal
-      }
-
-      // Locomotion state by speed.
-      const state = speed > WALK_MAX ? "Run" : speed > 0 ? "Walk" : "Idle";
-      character.setAction(state);
+      character.model.position.copy(drawPos);
+      planet.upAt(drawPos, up);
+      character.orient(up, drawFwd);
+      character.setAction(state.anim);
     },
   };
 }
+
+export type PlayerController = ReturnType<typeof createPlayerController>;
+export type { PlayerState };

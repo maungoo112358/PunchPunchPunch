@@ -115,7 +115,6 @@ export class Character {
   mixer: THREE.AnimationMixer | null;
   actions: Record<string, THREE.AnimationAction>;
   current: string | null;
-  turnSpeed: number;
 
   constructor(scene: THREE.Scene, modelUrl: string, spawn: THREE.Vector3 | null = null) {
     this.scene = scene;
@@ -124,7 +123,6 @@ export class Character {
     this.mixer = null; // AnimationMixer (~ Unity Animator)
     this.actions = {}; // name -> AnimationAction (pre-built for crossfading)
     this.current = null; // name of the active action
-    this.turnSpeed = 6; // how fast the model rotates to face travel direction
 
     loader.load(
       modelUrl,
@@ -230,9 +228,12 @@ export class Character {
 
   // Orient the model on the surface: stand local +Y along the surface normal (`up`) and face
   // local +Z along `forward`. Both are world-space; `forward` need not be perpendicular to `up`
-  // (flattened into the tangent plane here). Slerps toward the target so turning and tilting stay
-  // smooth. Facing on a sphere is a full orientation, not one angle, so this replaces rotation.y.
-  orient(up: THREE.Vector3, forward: THREE.Vector3, dt: number) {
+  // (flattened into the tangent plane here). Facing on a sphere is a full orientation, not one
+  // angle, so this replaces rotation.y.
+  // This used to ease toward the target a bit each frame. That easing is now a tick of the movement
+  // sim instead, because facing is state the server owns and shares, so it cannot be something the
+  // client quietly does on its own. What arrives here is already the facing for this exact moment.
+  orient(up: THREE.Vector3, forward: THREE.Vector3) {
     if (!this.model) return;
     // Flatten forward into the tangent plane (remove the component along up), then normalize.
     _fwd.copy(forward).addScaledVector(up, -forward.dot(up));
@@ -241,7 +242,7 @@ export class Character {
     _right.crossVectors(up, _fwd).normalize(); // local +X = up cross forward
     _basis.makeBasis(_right, up, _fwd); // columns: +X, +Y, +Z
     _targetQuat.setFromRotationMatrix(_basis);
-    this.model.quaternion.slerp(_targetQuat, Math.min(1, this.turnSpeed * dt));
+    this.model.quaternion.copy(_targetQuat);
   }
 
   // Called every frame (~ Update()). dt = seconds since last frame.

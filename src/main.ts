@@ -14,6 +14,7 @@ import placements from "./config/propPlacements.yaml";
 import { Character } from "./entities/Character.js";
 import { createInput } from "./systems/input.js";
 import { createPlayerController } from "./systems/playerController.js";
+import { TICK_DT, MAX_CATCHUP } from "./systems/sim.js";
 import { createCameraFollow } from "./systems/cameraFollow.js";
 import { createSunFollow } from "./systems/sunFollow.js";
 import { COLORS } from "./config/palette.js";
@@ -76,23 +77,31 @@ if (import.meta.env.DEV) {
 // --- Systems ---
 const input = createInput();
 const cameraFollow = createCameraFollow(camera, character, input, planet);
-const controller = createPlayerController(character, input, cameraFollow, planet, path);
+const controller = createPlayerController(character, input, cameraFollow, planet, path, spawn);
 const sunFollow = createSunFollow(sun, character);
 const stats = createStats();
 
 // --- Update registry ---
-// Anything that ticks once a frame. Every module here already had an update(dt), so none of them had to
-// change or declare anything: in TypeScript a thing fits a shape just by having the right pieces. That is
-// unlike C#, where each of these classes would have to name an interface to qualify.
+// Two lists, because two clocks. Gameplay runs on a fixed tick so the same inputs always produce the
+// same result, which is what lets the server run the same walk and lets us replay our own inputs after
+// a correction. Everything else is presentation and runs once per drawn frame on real elapsed time.
+// Neither list had to declare anything: in TypeScript a thing fits a shape just by having the right
+// pieces, unlike C# where each class would have to name an interface to qualify.
 type Updatable = { update(dt: number): void };
+type Renderable = { render(alpha: number): void };
 
-// Each update(dt) ticks every frame; this array is the Unity update loop.
-// Order: drive the character first, then camera/shadow track its new pos.
-const updatables = [controller, character, cameraFollow, sunFollow, sky, grass, stats].filter(
+// Gameplay. Steps by TICK_DT, never by the frame's own time.
+const simulated: Updatable[] = [controller];
+
+// Presentation. The draw pass (controller.render) goes first so the model is in place before the camera
+// and the shadow follow it.
+const drawn: Renderable[] = [controller];
+const perFrame = [character, cameraFollow, sunFollow, sky, grass, stats].filter(
   (u): u is Updatable => Boolean(u),
 );
 
 const clock = new THREE.Clock(); // getDelta() ~ Time.deltaTime
+let accumulator = 0; // unsimulated time carried between frames
 renderer.setAnimationLoop(() => {
   const dt = clock.getDelta();
   // In editor mode the editor drives the camera and freezes the play systems; sky + stats still tick so
@@ -102,7 +111,18 @@ renderer.setAnimationLoop(() => {
     sky.update?.(dt);
     stats.update?.(); // the FPS panel does not care how long the frame took, so it takes no dt
   } else {
-    for (const u of updatables) u.update?.(dt);
+    // Spend whole ticks out of the time we have banked, and keep the remainder for next frame. The
+    // ceiling matters: a tab you are not looking at gets no frames, so it comes back owing seconds of
+    // simulation, and without the clamp that is hundreds of ticks in one go.
+    accumulator = Math.min(accumulator + dt, MAX_CATCHUP);
+    while (accumulator >= TICK_DT) {
+      for (const u of simulated) u.update(TICK_DT);
+      accumulator -= TICK_DT;
+    }
+    // Leftover time as a fraction of a tick: how far past the last tick the picture should be.
+    const alpha = accumulator / TICK_DT;
+    for (const r of drawn) r.render(alpha);
+    for (const u of perFrame) u.update?.(dt);
   }
   renderer.render(scene, camera);
 });
