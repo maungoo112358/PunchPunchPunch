@@ -11,6 +11,9 @@ dist-ssr/
 server/server
 server/*.exe
 
+# Compiled output of the fixture generator (npm run gen:trajectory)
+client/.tools/
+
 # Logs
 *.log
 npm-debug.log*
