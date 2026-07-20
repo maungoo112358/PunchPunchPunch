@@ -1,9 +1,25 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import type { GLTF } from "three/addons/loaders/GLTFLoader.js";
+import { clone as cloneRig } from "three/addons/utils/SkeletonUtils.js";
 
 // One shared loader instance is fine for all characters.
 const loader = new GLTFLoader();
+
+// One download and one parse per model file, however many characters wear it. The map holds the
+// in-flight promise, not the result, so five characters asking at the same moment all wait on the
+// same fetch instead of starting five. The loaded glTF is kept as a master copy and never added to
+// the scene: each character clones it.
+const loads = new Map<string, Promise<GLTF>>();
+
+function loadModel(url: string) {
+  let pending = loads.get(url);
+  if (!pending) {
+    pending = new Promise<GLTF>((resolve, reject) => loader.load(url, resolve, undefined, reject));
+    loads.set(url, pending);
+  }
+  return pending;
+}
 
 // Reused scratch for orient() so we don't allocate every frame.
 const _fwd = new THREE.Vector3();
@@ -124,16 +140,17 @@ export class Character {
     this.actions = {}; // name -> AnimationAction (pre-built for crossfading)
     this.current = null; // name of the active action
 
-    loader.load(
-      modelUrl,
-      (gltf) => this._onLoad(gltf),
-      undefined, // onProgress (skipped)
-      (err) => console.error(`Failed to load ${modelUrl}:`, err)
-    );
+    loadModel(modelUrl)
+      .then((gltf) => this._onLoad(gltf))
+      .catch((err) => console.error(`Failed to load ${modelUrl}:`, err));
   }
 
   _onLoad(gltf: GLTF) {
-    const model = gltf.scene;
+    // Clone the master copy, because several characters can share one glTF. It has to be the rig-aware
+    // clone: a plain .clone() copies the meshes but leaves them pointing at the original's skeleton, so
+    // every copy would collapse onto whatever the first one is doing. cloneRig rebuilds the bones and
+    // rebinds each mesh to its own, while still sharing the geometry, so the copies are cheap.
+    const model = cloneRig(gltf.scene);
     // One shared ramp and one shared outline material for every mesh, so they all match.
     const gradient = makeToonGradient(TOON_STEPS);
     const outlineMat = makeOutlineMaterial();
@@ -248,5 +265,25 @@ export class Character {
   // Called every frame (~ Update()). dt = seconds since last frame.
   update(dt: number) {
     if (this.mixer) this.mixer.update(dt);
+  }
+
+  // Take this character off the screen for good, for when a player leaves. Geometry and textures are
+  // shared with the master copy and the other characters, so they are deliberately left alone: this
+  // only drops the clone's own bits. The materials are made per character, so those do go.
+  dispose() {
+    if (this.mixer) this.mixer.stopAllAction();
+    if (this.model) {
+      this.scene.remove(this.model);
+      this.model.traverse((obj) => {
+        const mesh = obj as THREE.Mesh;
+        if (!mesh.isMesh) return;
+        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        for (const mat of mats) mat.dispose();
+      });
+    }
+    this.model = null;
+    this.mixer = null;
+    this.actions = {};
+    this.current = null;
   }
 }

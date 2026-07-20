@@ -11,9 +11,10 @@ import { addHeroLight } from "./world/heroLight.js";
 import { createPlanetGrid } from "./world/planetGrid.js";
 import { createProps, footprintsFromEntries } from "./systems/props.js";
 import placements from "./config/propPlacements.yaml";
-import { Character } from "./entities/Character.js";
 import { createInput } from "./systems/input.js";
 import { createPlayerController } from "./systems/playerController.js";
+import { createWorld, LOCAL_ID } from "./systems/world.js";
+import { createWorldView } from "./systems/worldView.js";
 import { TICK_DT, MAX_CATCHUP } from "./systems/sim.js";
 import { createCameraFollow } from "./systems/cameraFollow.js";
 import { createSunFollow } from "./systems/sunFollow.js";
@@ -46,7 +47,15 @@ addHeroLight(camera); // warm fill on the character, follows the view
 // --- Entities ---
 // Spawn at the north pole, where up == +Y so the character stands upright with no reorientation.
 const spawn = new THREE.Vector3(0, planet.radius, 0);
-const character = new Character(scene, "/models/Wizard.gltf", spawn);
+
+// Everyone in the world lives in here, you included, as one entry in a map. The view draws whatever is
+// in the map, so a player arriving over the network later is just another entry.
+const world = createWorld();
+const localPlayer = world.add(LOCAL_ID, spawn);
+const view = createWorldView(scene, world, planet);
+// The camera, the grass parting and the sun's shadow all follow you specifically, so they need your
+// character object now. Its model is null until the glTF loads, which all three already handle.
+const character = view.characterFor(LOCAL_ID);
 
 // Prop placements come from config/propPlacements.yaml. Work out their grass-clearing footprints first,
 // from the raw entries, so the grass can carve around each prop as it builds (no blades poking over them).
@@ -74,10 +83,30 @@ if (import.meta.env.DEV) {
   });
 }
 
+// Dev-only proof that the state layer is real: press P to put a second player in the map a few paces
+// away, press it again to take them out. Nothing here touches a model or the scene, it only adds and
+// removes a map entry, and a whole character appears and disappears because the view draws the map.
+// That is exactly what a snapshot off the network will do later. Stripped from release builds.
+if (import.meta.env.DEV) {
+  const TEST_ID = "test";
+  window.addEventListener("keydown", (e) => {
+    if (e.code !== "KeyP") return;
+    if (world.players.has(TEST_ID)) {
+      world.remove(TEST_ID);
+      console.log("test player removed");
+    } else {
+      const at = spawn.clone().add(new THREE.Vector3(4, 0, 2));
+      planet.placeOnSurface(at);
+      world.add(TEST_ID, at);
+      console.log("test player added at", at);
+    }
+  });
+}
+
 // --- Systems ---
 const input = createInput();
 const cameraFollow = createCameraFollow(camera, character, input, planet);
-const controller = createPlayerController(character, input, cameraFollow, planet, path, spawn);
+const controller = createPlayerController(localPlayer, input, cameraFollow, planet, path);
 const sunFollow = createSunFollow(sun, character);
 const stats = createStats();
 
@@ -90,13 +119,14 @@ const stats = createStats();
 type Updatable = { update(dt: number): void };
 type Renderable = { render(alpha: number): void };
 
-// Gameplay. Steps by TICK_DT, never by the frame's own time.
-const simulated: Updatable[] = [controller];
+// Gameplay. Steps by TICK_DT, never by the frame's own time. World goes first: it files everyone's
+// current state away as "where they were" before the controller overwrites it.
+const simulated: Updatable[] = [world, controller];
 
-// Presentation. The draw pass (controller.render) goes first so the model is in place before the camera
-// and the shadow follow it.
-const drawn: Renderable[] = [controller];
-const perFrame = [character, cameraFollow, sunFollow, sky, grass, stats].filter(
+// Presentation. The draw pass goes first so the models are in place before the camera and the shadow
+// follow them.
+const drawn: Renderable[] = [view];
+const perFrame = [view, cameraFollow, sunFollow, sky, grass, stats].filter(
   (u): u is Updatable => Boolean(u),
 );
 
