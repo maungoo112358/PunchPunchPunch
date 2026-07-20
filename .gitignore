@@ -1,10 +1,15 @@
 # Dependencies
 node_modules/
 
-# Vite build output
+# Vite build output + its dependency cache
 dist/
 dist-ssr/
+.vite/
 *.local
+
+# Go server build output (the compiled binary, named after its folder)
+server/server
+server/*.exe
 
 # Logs
 *.log
