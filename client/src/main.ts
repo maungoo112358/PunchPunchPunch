@@ -1,7 +1,6 @@
 import * as THREE from "three";
 import { createRenderer } from "./core/renderer.js";
 import { createCamera } from "./core/camera.js";
-import { createStats } from "./core/stats.js";
 import { addLights } from "./world/lights.js";
 import { createPlanet } from "./world/planet.js";
 import { createPath } from "./world/path.js";
@@ -20,6 +19,7 @@ import { createCameraFollow } from "./systems/cameraFollow.js";
 import { createSunFollow } from "./systems/sunFollow.js";
 import { COLORS } from "./config/palette.js";
 import type { PropEditor } from "./systems/propEditor.js";
+import type { DebugOverlay } from "./systems/debugOverlay.js";
 
 console.log("PunchPunchPunch booting...");
 
@@ -83,32 +83,53 @@ if (import.meta.env.DEV) {
   });
 }
 
-// Dev-only proof that the state layer is real: press P to put a second player in the map a few paces
-// away, press it again to take them out. Nothing here touches a model or the scene, it only adds and
-// removes a map entry, and a whole character appears and disappears because the view draws the map.
-// That is exactly what a snapshot off the network will do later. Stripped from release builds.
-if (import.meta.env.DEV) {
-  const TEST_ID = "test";
-  window.addEventListener("keydown", (e) => {
-    if (e.code !== "KeyP") return;
-    if (world.players.has(TEST_ID)) {
-      world.remove(TEST_ID);
-      console.log("test player removed");
-    } else {
-      const at = spawn.clone().add(new THREE.Vector3(4, 0, 2));
-      planet.placeOnSurface(at);
-      world.add(TEST_ID, at);
-      console.log("test player added at", at);
-    }
-  });
-}
-
 // --- Systems ---
 const input = createInput();
 const cameraFollow = createCameraFollow(camera, character, input, planet);
 const controller = createPlayerController(localPlayer, input, cameraFollow, planet, path);
 const sunFollow = createSunFollow(sun, character);
-const stats = createStats();
+
+// Dev-only pokes at the two new layers, stripped from release builds.
+// I shows a panel of live numbers in the corner: the input we are building this tick and where the sim
+// has put you. Press it again to hide.
+// P puts a second player in the map a few paces away, and takes them out again. Nothing there touches a
+// model or the scene, it only adds and removes a map entry, and a whole character appears and disappears
+// because the view draws the map. That is exactly what a snapshot off the network will do later.
+let overlay: DebugOverlay | null = null;
+if (import.meta.env.DEV) {
+  const TEST_ID = "test";
+  import("./systems/debugOverlay.js").then(({ createDebugOverlay }) => {
+    overlay = createDebugOverlay(() => {
+      const latest = controller.pending[controller.pending.length - 1];
+      const p = localPlayer.state.position;
+      const f = localPlayer.state.forward;
+      return {
+        "input seq": latest ? latest.seq : "-",
+        "input dir": latest ? `${latest.dir.x.toFixed(2)}, ${latest.dir.y.toFixed(2)}, ${latest.dir.z.toFixed(2)}` : "-",
+        speed: latest ? latest.dir.length().toFixed(2) : "-",
+        pending: controller.pending.length,
+        anim: localPlayer.state.anim,
+        position: `${p.x.toFixed(1)}, ${p.y.toFixed(1)}, ${p.z.toFixed(1)}`,
+        facing: `${f.x.toFixed(2)}, ${f.y.toFixed(2)}, ${f.z.toFixed(2)}`,
+        players: world.players.size,
+      };
+    });
+  });
+  window.addEventListener("keydown", (e) => {
+    if (e.code === "KeyI") overlay?.toggle();
+    if (e.code === "KeyP") {
+      if (world.players.has(TEST_ID)) {
+        world.remove(TEST_ID);
+        console.log("test player removed");
+      } else {
+        const at = spawn.clone().add(new THREE.Vector3(4, 0, 2));
+        planet.placeOnSurface(at);
+        world.add(TEST_ID, at);
+        console.log("test player added at", at);
+      }
+    }
+  });
+}
 
 // --- Update registry ---
 // Two lists, because two clocks. Gameplay runs on a fixed tick so the same inputs always produce the
@@ -126,7 +147,7 @@ const simulated: Updatable[] = [world, controller];
 // Presentation. The draw pass goes first so the models are in place before the camera and the shadow
 // follow them.
 const drawn: Renderable[] = [view];
-const perFrame = [view, cameraFollow, sunFollow, sky, grass, stats].filter(
+const perFrame = [view, cameraFollow, sunFollow, sky, grass].filter(
   (u): u is Updatable => Boolean(u),
 );
 
@@ -134,12 +155,11 @@ const clock = new THREE.Clock(); // getDelta() ~ Time.deltaTime
 let accumulator = 0; // unsimulated time carried between frames
 renderer.setAnimationLoop(() => {
   const dt = clock.getDelta();
-  // In editor mode the editor drives the camera and freezes the play systems; sky + stats still tick so
-  // the dome tracks the orbiting view and the FPS meter keeps reading.
+  // In editor mode the editor drives the camera and freezes the play systems; the sky still ticks so
+  // the dome tracks the orbiting view.
   if (editor && editor.isActive()) {
     editor.update(dt);
     sky.update?.(dt);
-    stats.update?.(); // the FPS panel does not care how long the frame took, so it takes no dt
   } else {
     // Spend whole ticks out of the time we have banked, and keep the remainder for next frame. The
     // ceiling matters: a tab you are not looking at gets no frames, so it comes back owing seconds of
@@ -154,6 +174,7 @@ renderer.setAnimationLoop(() => {
     for (const r of drawn) r.render(alpha);
     for (const u of perFrame) u.update?.(dt);
   }
+  overlay?.update(dt); // dev readout, and null until its module finishes loading
   renderer.render(scene, camera);
 });
 

@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import type { Planet } from "../world/planet.js";
 import type { CameraFollow } from "./cameraFollow.js";
-import { stepPlayer, type Road } from "./sim.js";
+import { stepPlayer, type MoveInput, type Road } from "./sim.js";
 import type { WorldPlayer } from "./world.js";
 
 // Turns what you are pushing into a world direction and steps your entry in the world state. That is
@@ -11,12 +11,20 @@ import type { WorldPlayer } from "./world.js";
 // Runs on the fixed tick, never on the frame's own elapsed time, because the sim has to be replayable.
 
 // The one input channel we read. Its length is the speed, so it carries walk vs run.
-type MoveInput = { getDirection(): THREE.Vector3 };
+type IntentSource = { getDirection(): THREE.Vector3 };
 
-export function createPlayerController( player: WorldPlayer, input: MoveInput, cameraFollow: CameraFollow, planet: Planet, path: Road | null, ) {
-  const moveDir = new THREE.Vector3(); // world tangent move direction, reused per tick
+// How many recent inputs we keep. Nothing acknowledges them yet, so the oldest is simply dropped once
+// the list is full. Three seconds is far more than any round trip, and at step 13 the drop rule becomes
+// "throw away everything the server has confirmed" instead of "throw away the oldest".
+const MAX_PENDING = 90; // 3 seconds at 30 ticks
+
+export function createPlayerController( player: WorldPlayer, input: IntentSource, cameraFollow: CameraFollow, planet: Planet, path: Road | null, ) {
+  const pending: MoveInput[] = []; // inputs we have applied, newest last, waiting to be confirmed
+  let nextSeq = 0;
 
   return {
+    pending,
+
     update(dt: number) {
       const intent = input.getDirection(); // x = strafe, z = forward; magnitude = speed (0..1)
       // Resolve camera-relative intent into a world direction here, outside the sim. Your camera is
@@ -24,9 +32,15 @@ export function createPlayerController( player: WorldPlayer, input: MoveInput, c
       // already a direction on the planet. Multiplying keeps the magnitude, so walking stays a walk.
       const fwd = cameraFollow.getForward();
       const right = cameraFollow.getRight();
-      moveDir.copy(fwd).multiplyScalar(intent.z).addScaledVector(right, intent.x);
+      const dir = new THREE.Vector3().copy(fwd).multiplyScalar(intent.z).addScaledVector(right, intent.x);
 
-      stepPlayer(player.state, { dir: moveDir }, planet, path, dt);
+      // A fresh record every tick, not a reused one. This is the thing that goes on the wire and the
+      // thing we replay from, so it has to still hold this tick's numbers long after the tick is over.
+      const record: MoveInput = { seq: nextSeq++, dir };
+      pending.push(record);
+      if (pending.length > MAX_PENDING) pending.shift();
+
+      stepPlayer(player.state, record, planet, path, dt);
     },
   };
 }

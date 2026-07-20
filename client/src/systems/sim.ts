@@ -37,7 +37,10 @@ export type PlayerState = {
 
 // One tick of intent, already resolved to world space by whoever built it. Its length is the speed,
 // so it carries walk versus run in the same three numbers.
-export type MoveInput = { dir: THREE.Vector3 };
+// seq numbers the ticks, counting up forever from the moment the game starts. The sim ignores it, but
+// it is what the server will echo back as "I have processed everything up to here", which is how the
+// client later works out which of its own inputs still need replaying after a correction.
+export type MoveInput = { seq: number; dir: THREE.Vector3 };
 
 // The dirt road, only for asking "is he standing on it" so he can move a bit quicker.
 export type Road = { contains(worldPos: THREE.Vector3, margin?: number): boolean };
