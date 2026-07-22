@@ -17,6 +17,7 @@ import { createWorldView } from "./systems/worldView.js";
 import { TICK_DT, MAX_CATCHUP } from "./systems/sim.js";
 import { createCameraFollow } from "./systems/cameraFollow.js";
 import { createSunFollow } from "./systems/sunFollow.js";
+import { createConnection } from "./net/connection.js";
 import { COLORS } from "./config/palette.js";
 import type { PropEditor } from "./systems/propEditor.js";
 import type { DebugOverlay } from "./systems/debugOverlay.js";
@@ -88,6 +89,11 @@ const input = createInput();
 const cameraFollow = createCameraFollow(camera, character, input, planet);
 const controller = createPlayerController(localPlayer, input, cameraFollow, planet, path);
 const sunFollow = createSunFollow(sun, character);
+
+// The line to the server. It opens on load and stays open, but carries nothing yet, so the game is
+// still entirely single player. Watch the console for [net] lines, and the server's own log for the
+// matching join and drop.
+createConnection(import.meta.env.VITE_SERVER_URL);
 
 // Dev-only pokes at the two new layers, stripped from release builds.
 // I shows a panel of live numbers in the corner: the input we are building this tick and where the sim

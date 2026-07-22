@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "deploy": "npm run build && firebase deploy --only hosting",
     "typecheck": "tsc --noEmit",
     "typecheck:watch": "tsc --noEmit --watch",
     "gen:trajectory": "tsc src/tools/genTrajectory.ts src/tools/node.d.ts --outDir .tools --module esnext --target es2022 --moduleResolution node --skipLibCheck && node .tools/tools/genTrajectory.js"
@@ -21,6 +22,7 @@
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",
     "@types/three": "^0.184.1",
+    "firebase-tools": "^15.24.0",
     "js-yaml": "^4.1.0",
     "typescript": "^5.9.3",
     "vite": "^6.4.3"

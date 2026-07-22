@@ -21,3 +21,11 @@ declare module "*.yml" {
   const data: any;
   export default data;
 }
+
+// The build-time settings, read off import.meta.env. Vite only hands the browser variables whose names
+// start with VITE_, and it swaps them in as plain text while building, so nothing is looked up at run
+// time. Naming the variable here is what turns a typo into a compile error instead of an undefined that
+// travels quietly into `new WebSocket(undefined)`.
+interface ImportMetaEnv {
+  readonly VITE_SERVER_URL: string;
+}

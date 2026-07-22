@@ -34,3 +34,6 @@ docs/
 CLAUDE.md
 CLAUDE.local.md
 HANDOFF.md
+
+# Firebase CLI deploy cache (hashes of uploaded files, regenerated every deploy)
+client/.firebase/
