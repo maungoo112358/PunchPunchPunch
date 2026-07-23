@@ -18,7 +18,7 @@ import { TICK_DT, MAX_CATCHUP } from "./systems/sim.js";
 import { createCameraFollow } from "./systems/cameraFollow.js";
 import { createSunFollow } from "./systems/sunFollow.js";
 import { createSession } from "./net/session.js";
-import type { Snapshot } from "./net/gen/game_pb.js";
+import { createWorldSync } from "./systems/worldSync.js";
 import { COLORS } from "./config/palette.js";
 import type { PropEditor } from "./systems/propEditor.js";
 import type { DebugOverlay } from "./systems/debugOverlay.js";
@@ -89,14 +89,12 @@ if (import.meta.env.DEV) {
 const input = createInput();
 const cameraFollow = createCameraFollow(camera, character, input, planet);
 
-// The line to the server. Input goes up every tick and snapshots come down; we keep only the newest to
-// look at. This step just observes it: your avatar still moves by local prediction (see playerController),
-// and the snapshot is shown in the debug overlay so you can watch another browser's numbers change. Wiring
-// snapshots into the world for real needs your own id, which arrives with the join handshake in step 10.
-let latestSnapshot: Snapshot | null = null;
-const session = createSession(import.meta.env.VITE_SERVER_URL, (snapshot) => {
-  latestSnapshot = snapshot;
-});
+// The line to the server. Input goes up every tick; the welcome, joins, leaves and snapshots come down,
+// and worldSync writes them into the same player map worldView draws, so a remote player shows up as a
+// real character and vanishes when they leave. Your own avatar still moves by local prediction, and the
+// server's copy of you is skipped until reconciliation at step 13.
+const worldSync = createWorldSync(world, spawn);
+const session = createSession(import.meta.env.VITE_SERVER_URL, worldSync);
 
 const controller = createPlayerController(localPlayer, input, cameraFollow, planet, path, session.sendInput);
 const sunFollow = createSunFollow(sun, character);
@@ -127,15 +125,9 @@ if (import.meta.env.DEV) {
         // The server side of the same numbers. srv lines are what the authoritative sim says, straight
         // from the latest snapshot. Move in another browser and watch that player's srv line change here.
         net: session.status,
-        "snap tick": latestSnapshot ? latestSnapshot.tick : "-",
-        "snap ack": latestSnapshot ? latestSnapshot.ack : "-",
+        "my id": worldSync.myId ?? "-",
+        "server tick": worldSync.serverTick,
       };
-      if (latestSnapshot) {
-        for (const sp of latestSnapshot.players) {
-          const pos = sp.position;
-          rows[`srv ${sp.id}`] = pos ? `${pos.x.toFixed(1)}, ${pos.y.toFixed(1)}, ${pos.z.toFixed(1)}` : "-";
-        }
-      }
       return rows;
     });
   });

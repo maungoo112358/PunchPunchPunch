@@ -1,21 +1,44 @@
 import { create } from "@bufbuild/protobuf";
 import { createConnection } from "./connection.js";
 import { encode, decode, type Encoding } from "./codec.js";
-import { ClientMessageSchema, ServerMessageSchema, type Snapshot } from "./gen/game_pb.js";
+import { ClientMessageSchema, ServerMessageSchema } from "./gen/game_pb.js";
+import type { Welcome, Join, Leave, Snapshot } from "./gen/game_pb.js";
 import type { MoveInput } from "../systems/sim.js";
 
-// The game's own view of the socket: send your input, and be told when a snapshot arrives. It owns the
-// two message schemas and the encoding, so the rest of the game passes plain records and reads plain
-// snapshots, never touching protobuf or JSON.
+// The game's own view of the socket: send your input, and be told what the server says. It owns the two
+// message schemas and the encoding, so the rest of the game passes plain records and reads plain
+// messages, never touching protobuf or JSON.
 //
 // Step 9 uses JSON on the wire so every frame reads plainly in devtools and the server log. Flipping to
 // protobuf is the one line below; the per-connection choice from the socket URL comes at step 14.
 const ENCODING: Encoding = "json";
 
-export function createSession(url: string, onSnapshot: (snapshot: Snapshot) => void) {
+// The four things the server can tell us. Whoever creates the session hands these in, and each incoming
+// frame is decoded once here and routed to the matching one.
+export type ServerHandlers = {
+  onWelcome(welcome: Welcome): void;
+  onJoin(join: Join): void;
+  onLeave(leave: Leave): void;
+  onSnapshot(snapshot: Snapshot): void;
+};
+
+export function createSession(url: string, handlers: ServerHandlers) {
   const connection = createConnection(url, (frame) => {
     const message = decode(ServerMessageSchema, frame);
-    if (message.body.case === "snapshot") onSnapshot(message.body.value);
+    switch (message.body.case) {
+      case "welcome":
+        handlers.onWelcome(message.body.value);
+        break;
+      case "join":
+        handlers.onJoin(message.body.value);
+        break;
+      case "leave":
+        handlers.onLeave(message.body.value);
+        break;
+      case "snapshot":
+        handlers.onSnapshot(message.body.value);
+        break;
+    }
   });
 
   return {

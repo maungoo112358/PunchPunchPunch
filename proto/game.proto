@@ -46,9 +46,38 @@ message ClientMessage {
   }
 }
 
-// Everything the server can send. The same extension point: roster and join land here later.
+// Who a player is, the parts that do not change while they are connected: their id and which planet they
+// are on. Name and character model join this at step 12; they ride here, sent once on join, rather than
+// in every snapshot thirty times a second forever.
+message PlayerInfo {
+  string id = 1;
+  uint32 planet_id = 2;
+}
+
+// Sent to a player the moment they join: their own id, so they can tell themselves apart in snapshots,
+// and the roster of everyone already here.
+message Welcome {
+  string your_id = 1;
+  repeated PlayerInfo players = 2;
+}
+
+// Sent to everyone else when a player joins.
+message Join {
+  PlayerInfo player = 1;
+}
+
+// Sent to everyone when a player leaves, so their avatar can be removed.
+message Leave {
+  string id = 1;
+}
+
+// Everything the server can send. The oneof is the extension point promised in step 7: snapshot was the
+// only variant then, and join, the roster, and leaves land here now.
 message ServerMessage {
   oneof body {
     Snapshot snapshot = 1;
+    Welcome welcome = 2;
+    Join join = 3;
+    Leave leave = 4;
   }
 }

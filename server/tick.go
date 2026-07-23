@@ -40,18 +40,28 @@ func (s *server) runTicks(ctx context.Context) {
 	}
 }
 
-// tick advances every player by one step and sends each a snapshot. It reads the connection set once
-// under the hub lock, then does the sim and the sending on that copy; a client that joins or leaves
-// mid-tick is simply caught on the next one.
+// tick reconciles who is playing, then advances and broadcasts them. Membership first, in this order, so
+// a Welcome or a Join always reaches a client before the first snapshot that mentions the new player, and
+// a Leave reaches them before the snapshot that drops the one who left. Doing it all here keeps the tick
+// loop the single writer to every socket.
 func (s *server) tick(ctx context.Context) {
-	clients := s.hub.All()
-	if len(clients) == 0 {
+	all := s.hub.All()
+	current := make(map[string]*Client, len(all))
+	for _, c := range all {
+		current[c.ID] = c
+	}
+
+	s.handleLeaves(ctx, current)
+	s.handleJoins(ctx, all, current)
+
+	if len(s.welcomed) == 0 {
 		return
 	}
 	s.tickNum++
 
 	// Advance each player by one input, or hold still if none arrived in time for this tick.
-	for _, c := range clients {
+	for id := range s.welcomed {
+		c := current[id]
 		if in, ok := c.drainOne(); ok {
 			c.state = sim.Step(c.state, in, s.planet, s.path, sim.TickDT)
 			c.lastSeq = uint32(in.Seq)
@@ -61,9 +71,10 @@ func (s *server) tick(ctx context.Context) {
 	}
 
 	// One players list, shared by every snapshot. Only the ack differs per recipient, because it is that
-	// client's own last processed input, which is how they will later tell which predictions are confirmed.
-	players := make([]*pb.PlayerSnapshot, 0, len(clients))
-	for _, c := range clients {
+	// client's own last processed input, which is how they later tell which predictions are confirmed.
+	players := make([]*pb.PlayerSnapshot, 0, len(s.welcomed))
+	for id := range s.welcomed {
+		c := current[id]
 		players = append(players, &pb.PlayerSnapshot{
 			Id:       c.ID,
 			PlanetId: 0,
@@ -73,22 +84,83 @@ func (s *server) tick(ctx context.Context) {
 		})
 	}
 
-	for _, c := range clients {
-		msg := &pb.ServerMessage{Body: &pb.ServerMessage_Snapshot{Snapshot: &pb.Snapshot{
+	for id := range s.welcomed {
+		c := current[id]
+		s.sendMsg(ctx, c, &pb.ServerMessage{Body: &pb.ServerMessage_Snapshot{Snapshot: &pb.Snapshot{
 			Tick:    s.tickNum,
 			Ack:     c.lastSeq,
 			Players: players,
-		}}}
-		data, text, err := wire.Encode(msg, c.enc)
-		if err != nil {
-			log.Printf("encode snapshot for %s: %v", c.ID, err)
-			continue
-		}
-		if err := c.send(ctx, data, text); err != nil {
-			log.Printf("send  %s failed: %v", c.ID, err)
-		}
+		}}})
 	}
 }
+
+// handleLeaves finds welcomed players who are no longer connected, tells the rest they are gone, and
+// forgets them. Gone ids are collected first so the welcomed map is not mutated while being ranged.
+func (s *server) handleLeaves(ctx context.Context, current map[string]*Client) {
+	var gone []string
+	for id := range s.welcomed {
+		if _, ok := current[id]; !ok {
+			gone = append(gone, id)
+		}
+	}
+	for _, id := range gone {
+		delete(s.welcomed, id)
+		leave := &pb.ServerMessage{Body: &pb.ServerMessage_Leave{Leave: &pb.Leave{Id: id}}}
+		for other := range s.welcomed {
+			s.sendMsg(ctx, current[other], leave)
+		}
+		log.Printf("leave %s (%d playing)", id, len(s.welcomed))
+	}
+}
+
+// handleJoins finds connected players not yet welcomed, hands each the roster and its own id, tells the
+// others about the newcomer, and marks it in play.
+func (s *server) handleJoins(ctx context.Context, all []*Client, current map[string]*Client) {
+	for _, c := range all {
+		if s.welcomed[c.ID] {
+			continue
+		}
+		// The roster is everyone welcomed so far, which excludes this newcomer since it is not in the set
+		// yet. If two join on the same tick the first is added before the second's roster is built, so the
+		// second sees the first.
+		roster := make([]*pb.PlayerInfo, 0, len(s.welcomed))
+		for other := range s.welcomed {
+			roster = append(roster, playerInfo(other))
+		}
+		s.sendMsg(ctx, c, &pb.ServerMessage{Body: &pb.ServerMessage_Welcome{Welcome: &pb.Welcome{
+			YourId:  c.ID,
+			Players: roster,
+		}}})
+
+		join := &pb.ServerMessage{Body: &pb.ServerMessage_Join{Join: &pb.Join{Player: playerInfo(c.ID)}}}
+		for other := range s.welcomed {
+			s.sendMsg(ctx, current[other], join)
+		}
+
+		s.welcomed[c.ID] = true
+		log.Printf("welcome %s (%d playing)", c.ID, len(s.welcomed))
+	}
+}
+
+// sendMsg encodes one message in this client's chosen encoding and writes it. All sends go through here,
+// from the tick loop only, so there is one writer per socket.
+func (s *server) sendMsg(ctx context.Context, c *Client, msg *pb.ServerMessage) {
+	if c == nil {
+		return
+	}
+	data, text, err := wire.Encode(msg, c.enc)
+	if err != nil {
+		log.Printf("encode for %s: %v", c.ID, err)
+		return
+	}
+	if err := c.send(ctx, data, text); err != nil {
+		log.Printf("send  %s failed: %v", c.ID, err)
+	}
+}
+
+// playerInfo is the identity that rides join and roster messages. planetId is 0 until a second planet
+// exists; name and character model join it at step 12.
+func playerInfo(id string) *pb.PlayerInfo { return &pb.PlayerInfo{Id: id, PlanetId: 0} }
 
 // send writes one already-encoded frame, as a text frame for JSON or a binary frame for protobuf, under
 // a short deadline so a slow client cannot stall the tick.

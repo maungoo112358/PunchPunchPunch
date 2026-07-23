@@ -24,12 +24,13 @@ func TestTickLoopMovesAndBroadcasts(t *testing.T) {
 	planet := sim.NewPlanet()
 	path := sim.NewPath(planet.Radius)
 	s := &server{
-		hub:     NewHub(),
-		origins: []string{"*"},
-		idle:    0, // no idle kick while the test holds a socket open
-		planet:  planet,
-		path:    &path,
-		spawn:   sim.Vec3{X: 0, Y: sim.PlanetRadius, Z: 0},
+		hub:      NewHub(),
+		origins:  []string{"*"},
+		idle:     0, // no idle kick while the test holds a socket open
+		planet:   planet,
+		path:     &path,
+		spawn:    sim.Vec3{X: 0, Y: sim.PlanetRadius, Z: 0},
+		welcomed: make(map[string]bool),
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -76,7 +77,7 @@ func TestTickLoopMovesAndBroadcasts(t *testing.T) {
 		}
 		snap := msg.GetSnapshot()
 		if snap == nil {
-			t.Fatal("a server message arrived that was not a snapshot")
+			continue // the Welcome, and later the roster, arrive before and between snapshots
 		}
 		if len(snap.Players) != 1 {
 			t.Fatalf("expected 1 player in the snapshot, got %d", len(snap.Players))

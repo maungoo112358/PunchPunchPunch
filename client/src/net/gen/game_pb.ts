@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file game.proto.
  */
 export const file_game: GenFile = /*@__PURE__*/
-  fileDesc("CgpnYW1lLnByb3RvEghwdW5jaC52MSInCgRWZWMzEgkKAXgYASABKAESCQoBeRgCIAEoARIJCgF6GAMgASgBIjEKBUlucHV0EgsKA3NlcRgBIAEoDRIbCgNkaXIYAiABKAsyDi5wdW5jaC52MS5WZWMzIoABCg5QbGF5ZXJTbmFwc2hvdBIKCgJpZBgBIAEoCRIRCglwbGFuZXRfaWQYAiABKA0SIAoIcG9zaXRpb24YAyABKAsyDi5wdW5jaC52MS5WZWMzEh8KB2ZvcndhcmQYBCABKAsyDi5wdW5jaC52MS5WZWMzEgwKBGFuaW0YBSABKAkiUAoIU25hcHNob3QSDAoEdGljaxgBIAEoDRILCgNhY2sYAiABKA0SKQoHcGxheWVycxgDIAMoCzIYLnB1bmNoLnYxLlBsYXllclNuYXBzaG90IjkKDUNsaWVudE1lc3NhZ2USIAoFaW5wdXQYASABKAsyDy5wdW5jaC52MS5JbnB1dEgAQgYKBGJvZHkiPwoNU2VydmVyTWVzc2FnZRImCghzbmFwc2hvdBgBIAEoCzISLnB1bmNoLnYxLlNuYXBzaG90SABCBgoEYm9keUIqWihwdW5jaHB1bmNocHVuY2gvc2VydmVyL2dlbi9nYW1lcGI7Z2FtZXBiYgZwcm90bzM");
+  fileDesc("CgpnYW1lLnByb3RvEghwdW5jaC52MSInCgRWZWMzEgkKAXgYASABKAESCQoBeRgCIAEoARIJCgF6GAMgASgBIjEKBUlucHV0EgsKA3NlcRgBIAEoDRIbCgNkaXIYAiABKAsyDi5wdW5jaC52MS5WZWMzIoABCg5QbGF5ZXJTbmFwc2hvdBIKCgJpZBgBIAEoCRIRCglwbGFuZXRfaWQYAiABKA0SIAoIcG9zaXRpb24YAyABKAsyDi5wdW5jaC52MS5WZWMzEh8KB2ZvcndhcmQYBCABKAsyDi5wdW5jaC52MS5WZWMzEgwKBGFuaW0YBSABKAkiUAoIU25hcHNob3QSDAoEdGljaxgBIAEoDRILCgNhY2sYAiABKA0SKQoHcGxheWVycxgDIAMoCzIYLnB1bmNoLnYxLlBsYXllclNuYXBzaG90IjkKDUNsaWVudE1lc3NhZ2USIAoFaW5wdXQYASABKAsyDy5wdW5jaC52MS5JbnB1dEgAQgYKBGJvZHkiKwoKUGxheWVySW5mbxIKCgJpZBgBIAEoCRIRCglwbGFuZXRfaWQYAiABKA0iQQoHV2VsY29tZRIPCgd5b3VyX2lkGAEgASgJEiUKB3BsYXllcnMYAiADKAsyFC5wdW5jaC52MS5QbGF5ZXJJbmZvIiwKBEpvaW4SJAoGcGxheWVyGAEgASgLMhQucHVuY2gudjEuUGxheWVySW5mbyITCgVMZWF2ZRIKCgJpZBgBIAEoCSKnAQoNU2VydmVyTWVzc2FnZRImCghzbmFwc2hvdBgBIAEoCzISLnB1bmNoLnYxLlNuYXBzaG90SAASJAoHd2VsY29tZRgCIAEoCzIRLnB1bmNoLnYxLldlbGNvbWVIABIeCgRqb2luGAMgASgLMg4ucHVuY2gudjEuSm9pbkgAEiAKBWxlYXZlGAQgASgLMg8ucHVuY2gudjEuTGVhdmVIAEIGCgRib2R5QipaKHB1bmNocHVuY2hwdW5jaC9zZXJ2ZXIvZ2VuL2dhbWVwYjtnYW1lcGJiBnByb3RvMw");
 
 /**
  * A point or direction in world space. double, not float, because the sim runs in float64 on both
@@ -165,7 +165,97 @@ export const ClientMessageSchema: GenMessage<ClientMessage> = /*@__PURE__*/
   messageDesc(file_game, 4);
 
 /**
- * Everything the server can send. The same extension point: roster and join land here later.
+ * Who a player is, the parts that do not change while they are connected: their id and which planet they
+ * are on. Name and character model join this at step 12; they ride here, sent once on join, rather than
+ * in every snapshot thirty times a second forever.
+ *
+ * @generated from message punch.v1.PlayerInfo
+ */
+export type PlayerInfo = Message<"punch.v1.PlayerInfo"> & {
+  /**
+   * @generated from field: string id = 1;
+   */
+  id: string;
+
+  /**
+   * @generated from field: uint32 planet_id = 2;
+   */
+  planetId: number;
+};
+
+/**
+ * Describes the message punch.v1.PlayerInfo.
+ * Use `create(PlayerInfoSchema)` to create a new message.
+ */
+export const PlayerInfoSchema: GenMessage<PlayerInfo> = /*@__PURE__*/
+  messageDesc(file_game, 5);
+
+/**
+ * Sent to a player the moment they join: their own id, so they can tell themselves apart in snapshots,
+ * and the roster of everyone already here.
+ *
+ * @generated from message punch.v1.Welcome
+ */
+export type Welcome = Message<"punch.v1.Welcome"> & {
+  /**
+   * @generated from field: string your_id = 1;
+   */
+  yourId: string;
+
+  /**
+   * @generated from field: repeated punch.v1.PlayerInfo players = 2;
+   */
+  players: PlayerInfo[];
+};
+
+/**
+ * Describes the message punch.v1.Welcome.
+ * Use `create(WelcomeSchema)` to create a new message.
+ */
+export const WelcomeSchema: GenMessage<Welcome> = /*@__PURE__*/
+  messageDesc(file_game, 6);
+
+/**
+ * Sent to everyone else when a player joins.
+ *
+ * @generated from message punch.v1.Join
+ */
+export type Join = Message<"punch.v1.Join"> & {
+  /**
+   * @generated from field: punch.v1.PlayerInfo player = 1;
+   */
+  player?: PlayerInfo | undefined;
+};
+
+/**
+ * Describes the message punch.v1.Join.
+ * Use `create(JoinSchema)` to create a new message.
+ */
+export const JoinSchema: GenMessage<Join> = /*@__PURE__*/
+  messageDesc(file_game, 7);
+
+/**
+ * Sent to everyone when a player leaves, so their avatar can be removed.
+ *
+ * @generated from message punch.v1.Leave
+ */
+export type Leave = Message<"punch.v1.Leave"> & {
+  /**
+   * @generated from field: string id = 1;
+   */
+  id: string;
+};
+
+/**
+ * Describes the message punch.v1.Leave.
+ * Use `create(LeaveSchema)` to create a new message.
+ */
+export const LeaveSchema: GenMessage<Leave> = /*@__PURE__*/
+  messageDesc(file_game, 8);
+
+/**
+ * Everything the server can send. The oneof is the extension point promised in step 7: snapshot was the
+ * only variant then, and join, the roster, and leaves land here now.
  *
  * @generated from message punch.v1.ServerMessage
  */
@@ -179,6 +269,24 @@ export type ServerMessage = Message<"punch.v1.ServerMessage"> & {
      */
     value: Snapshot;
     case: "snapshot";
+  } | {
+    /**
+     * @generated from field: punch.v1.Welcome welcome = 2;
+     */
+    value: Welcome;
+    case: "welcome";
+  } | {
+    /**
+     * @generated from field: punch.v1.Join join = 3;
+     */
+    value: Join;
+    case: "join";
+  } | {
+    /**
+     * @generated from field: punch.v1.Leave leave = 4;
+     */
+    value: Leave;
+    case: "leave";
   } | { case: undefined; value?: undefined };
 };
 
@@ -187,5 +295,5 @@ export type ServerMessage = Message<"punch.v1.ServerMessage"> & {
  * Use `create(ServerMessageSchema)` to create a new message.
  */
 export const ServerMessageSchema: GenMessage<ServerMessage> = /*@__PURE__*/
-  messageDesc(file_game, 5);
+  messageDesc(file_game, 9);
 

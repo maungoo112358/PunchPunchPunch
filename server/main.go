@@ -66,6 +66,11 @@ type server struct {
 	path    *sim.Path
 	spawn   sim.Vec3
 	tickNum uint32 // counts up forever, stamped on every snapshot; only the tick loop touches it
+
+	// Who has been welcomed and is in play. The tick loop diffs this against the live connections each
+	// tick to find joins and leaves, so it stays the single writer to every socket. Only the tick loop
+	// touches it, so it needs no lock.
+	welcomed map[string]bool
 }
 
 func main() {
@@ -76,12 +81,13 @@ func main() {
 	planet := sim.NewPlanet()
 	path := sim.NewPath(planet.Radius)
 	s := &server{
-		hub:     NewHub(),
-		origins: origins,
-		idle:    idle,
-		planet:  planet,
-		path:    &path,
-		spawn:   sim.Vec3{X: 0, Y: planet.Radius, Z: 0}, // north pole, where up is +Y
+		hub:      NewHub(),
+		origins:  origins,
+		idle:     idle,
+		planet:   planet,
+		path:     &path,
+		spawn:    sim.Vec3{X: 0, Y: planet.Radius, Z: 0}, // north pole, where up is +Y
+		welcomed: make(map[string]bool),
 	}
 
 	mux := http.NewServeMux()
