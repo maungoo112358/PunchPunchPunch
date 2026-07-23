@@ -18,7 +18,10 @@ type IntentSource = { getDirection(): THREE.Vector3 };
 // "throw away everything the server has confirmed" instead of "throw away the oldest".
 const MAX_PENDING = 90; // 3 seconds at 30 ticks
 
-export function createPlayerController( player: WorldPlayer, input: IntentSource, cameraFollow: CameraFollow, planet: Planet, path: Road | null, ) {
+// send goes out every tick when connected; leave it undefined and the controller is pure local play.
+type SendInput = (input: MoveInput) => void;
+
+export function createPlayerController( player: WorldPlayer, input: IntentSource, cameraFollow: CameraFollow, planet: Planet, path: Road | null, send?: SendInput, ) {
   const pending: MoveInput[] = []; // inputs we have applied, newest last, waiting to be confirmed
   let nextSeq = 0;
 
@@ -40,7 +43,11 @@ export function createPlayerController( player: WorldPlayer, input: IntentSource
       pending.push(record);
       if (pending.length > MAX_PENDING) pending.shift();
 
+      // Predict locally so your avatar stays instant, and send the same input up so the server can walk
+      // its own copy. The server's answer is only observed this step; your avatar is corrected against
+      // it at step 13, which is what the pending list above is being kept for.
       stepPlayer(player.state, record, planet, path, dt);
+      send?.(record);
     },
   };
 }

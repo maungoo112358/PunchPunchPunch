@@ -17,7 +17,8 @@ import { createWorldView } from "./systems/worldView.js";
 import { TICK_DT, MAX_CATCHUP } from "./systems/sim.js";
 import { createCameraFollow } from "./systems/cameraFollow.js";
 import { createSunFollow } from "./systems/sunFollow.js";
-import { createConnection } from "./net/connection.js";
+import { createSession } from "./net/session.js";
+import type { Snapshot } from "./net/gen/game_pb.js";
 import { COLORS } from "./config/palette.js";
 import type { PropEditor } from "./systems/propEditor.js";
 import type { DebugOverlay } from "./systems/debugOverlay.js";
@@ -87,13 +88,18 @@ if (import.meta.env.DEV) {
 // --- Systems ---
 const input = createInput();
 const cameraFollow = createCameraFollow(camera, character, input, planet);
-const controller = createPlayerController(localPlayer, input, cameraFollow, planet, path);
-const sunFollow = createSunFollow(sun, character);
 
-// The line to the server. It opens on load and stays open, but carries nothing yet, so the game is
-// still entirely single player. Watch the console for [net] lines, and the server's own log for the
-// matching join and drop.
-createConnection(import.meta.env.VITE_SERVER_URL);
+// The line to the server. Input goes up every tick and snapshots come down; we keep only the newest to
+// look at. This step just observes it: your avatar still moves by local prediction (see playerController),
+// and the snapshot is shown in the debug overlay so you can watch another browser's numbers change. Wiring
+// snapshots into the world for real needs your own id, which arrives with the join handshake in step 10.
+let latestSnapshot: Snapshot | null = null;
+const session = createSession(import.meta.env.VITE_SERVER_URL, (snapshot) => {
+  latestSnapshot = snapshot;
+});
+
+const controller = createPlayerController(localPlayer, input, cameraFollow, planet, path, session.sendInput);
+const sunFollow = createSunFollow(sun, character);
 
 // Dev-only pokes at the two new layers, stripped from release builds.
 // I shows a panel of live numbers in the corner: the input we are building this tick and where the sim
@@ -109,7 +115,7 @@ if (import.meta.env.DEV) {
       const latest = controller.pending[controller.pending.length - 1];
       const p = localPlayer.state.position;
       const f = localPlayer.state.forward;
-      return {
+      const rows: Record<string, string | number> = {
         "input seq": latest ? latest.seq : "-",
         "input dir": latest ? `${latest.dir.x.toFixed(2)}, ${latest.dir.y.toFixed(2)}, ${latest.dir.z.toFixed(2)}` : "-",
         speed: latest ? latest.dir.length().toFixed(2) : "-",
@@ -118,7 +124,19 @@ if (import.meta.env.DEV) {
         position: `${p.x.toFixed(1)}, ${p.y.toFixed(1)}, ${p.z.toFixed(1)}`,
         facing: `${f.x.toFixed(2)}, ${f.y.toFixed(2)}, ${f.z.toFixed(2)}`,
         players: world.players.size,
+        // The server side of the same numbers. srv lines are what the authoritative sim says, straight
+        // from the latest snapshot. Move in another browser and watch that player's srv line change here.
+        net: session.status,
+        "snap tick": latestSnapshot ? latestSnapshot.tick : "-",
+        "snap ack": latestSnapshot ? latestSnapshot.ack : "-",
       };
+      if (latestSnapshot) {
+        for (const sp of latestSnapshot.players) {
+          const pos = sp.position;
+          rows[`srv ${sp.id}`] = pos ? `${pos.x.toFixed(1)}, ${pos.y.toFixed(1)}, ${pos.z.toFixed(1)}` : "-";
+        }
+      }
+      return rows;
     });
   });
   window.addEventListener("keydown", (e) => {

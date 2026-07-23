@@ -11,6 +11,10 @@ import (
 	"syscall"
 	"time"
 
+	pb "punchpunchpunch/server/gen/gamepb"
+	"punchpunchpunch/server/sim"
+	"punchpunchpunch/server/wire"
+
 	"github.com/coder/websocket"
 )
 
@@ -55,6 +59,13 @@ type server struct {
 	hub     *Hub
 	origins []string
 	idle    time.Duration
+
+	// The world the tick loop simulates in. planet and path are the same math the client and the golden
+	// test use; spawn is where a new player appears, the north pole, matching the client's spawn.
+	planet  sim.Planet
+	path    *sim.Path
+	spawn   sim.Vec3
+	tickNum uint32 // counts up forever, stamped on every snapshot; only the tick loop touches it
 }
 
 func main() {
@@ -62,7 +73,16 @@ func main() {
 	origins := strings.Split(env("ALLOWED_ORIGINS", defaultOrigins), ",")
 	idle := envDuration("IDLE_TIMEOUT", defaultIdle)
 
-	s := &server{hub: NewHub(), origins: origins, idle: idle}
+	planet := sim.NewPlanet()
+	path := sim.NewPath(planet.Radius)
+	s := &server{
+		hub:     NewHub(),
+		origins: origins,
+		idle:    idle,
+		planet:  planet,
+		path:    &path,
+		spawn:   sim.Vec3{X: 0, Y: planet.Radius, Z: 0}, // north pole, where up is +Y
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ws", s.handleWS)
@@ -86,6 +106,10 @@ func main() {
 	// give what is in flight a moment, then exit.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	// The heartbeat. Steps every player and broadcasts a snapshot thirty times a second, until the
+	// context is cancelled on shutdown.
+	go s.runTicks(ctx)
 
 	go func() {
 		log.Printf("listening on %s, accepting origins %v, idle timeout %s", addr, origins, idle)
@@ -121,7 +145,7 @@ func (s *server) handleWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client := s.hub.Add(conn, r.RemoteAddr)
+	client := s.hub.Add(conn, r.RemoteAddr, s.spawn)
 	log.Printf("join  %s from %s (%d connected)", client.ID, client.Addr, s.hub.Count())
 
 	defer func() {
@@ -157,6 +181,17 @@ func (s *server) handleWS(w http.ResponseWriter, r *http.Request) {
 			log.Printf("read  %s ended: %v", client.ID, err)
 			return
 		}
-		log.Printf("recv  %s %s, %d bytes", client.ID, kind, len(data))
+
+		// Decode the frame and, if it is an input, hand it to the tick loop. A text frame is JSON and a
+		// binary frame is protobuf, which is all Decode needs to pick the right reader. Anything that is
+		// not an input is ignored for now; join and the rest arrive in later steps.
+		var msg pb.ClientMessage
+		if err := wire.Decode(&msg, data, kind == websocket.MessageText); err != nil {
+			log.Printf("bad   %s message: %v", client.ID, err)
+			continue
+		}
+		if in := msg.GetInput(); in != nil {
+			client.offer(pbToInput(in))
+		}
 	}
 }

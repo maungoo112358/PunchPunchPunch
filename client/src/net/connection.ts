@@ -1,5 +1,8 @@
-// The socket to the game server. Today it only proves the wire is real: it dials, says what happened in
-// the console, and dials again if the line drops. Nothing crosses it yet, the messages arrive in step 7.
+import type { Frame } from "./codec.js";
+
+// The socket to the game server: dial, carry frames both ways, and dial again if the line drops. It
+// deals only in frames, strings and bytes, and knows nothing about the game. Decoding those frames into
+// messages is net/session.ts's job, one layer up.
 //
 // The address is baked in at build time from VITE_SERVER_URL. It is NOT worked out from the page's own
 // hostname, because the page comes from slint.live and the server lives on api.slint.live, so "wherever
@@ -13,7 +16,9 @@ const MAX_RETRY_MS = 10_000;
 
 export type ConnectionStatus = "connecting" | "open" | "closed";
 
-export function createConnection(url: string) {
+// onFrame is called for every message that arrives, already unwrapped to a string (a text frame, JSON)
+// or bytes (a binary frame, protobuf), which is exactly what the codec reads.
+export function createConnection(url: string, onFrame?: (frame: Frame) => void) {
   let socket: WebSocket | null = null;
   let status: ConnectionStatus = "closed";
   let retryMs = FIRST_RETRY_MS;
@@ -26,11 +31,20 @@ export function createConnection(url: string) {
     status = "connecting";
     console.log(`[net] connecting to ${url}`);
     socket = new WebSocket(url);
+    // Without this a binary frame comes back as a Blob, which only reads asynchronously, and the decode
+    // silently gets the wrong type. arraybuffer hands us the bytes directly. Harmless for JSON, which
+    // arrives as a string either way, and needed the moment we flip to protobuf.
+    socket.binaryType = "arraybuffer";
 
     socket.onopen = () => {
       status = "open";
       retryMs = FIRST_RETRY_MS; // a good connection earns back the short retry
       console.log("[net] open");
+    };
+
+    socket.onmessage = (e) => {
+      const frame: Frame = typeof e.data === "string" ? e.data : new Uint8Array(e.data as ArrayBuffer);
+      onFrame?.(frame);
     };
 
     // The browser fires error and then close for the same failure, and error carries no detail on
@@ -53,6 +67,12 @@ export function createConnection(url: string) {
   return {
     get status() {
       return status;
+    },
+
+    // Send a frame if the line is up, otherwise drop it. Dropping is fine: input is sent every tick, so
+    // a frame lost while reconnecting is replaced a thirtieth of a second later.
+    send(frame: Frame) {
+      if (socket && socket.readyState === WebSocket.OPEN) socket.send(frame);
     },
 
     // Hang up and stay hung up.
