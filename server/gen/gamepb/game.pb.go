@@ -462,13 +462,15 @@ func (*ClientMessage_Input) isClientMessage_Body() {}
 
 func (*ClientMessage_Ping) isClientMessage_Body() {}
 
-// Who a player is, the parts that do not change while they are connected: their id and which planet they
-// are on. Name and character model join this at step 12; they ride here, sent once on join, rather than
-// in every snapshot thirty times a second forever.
+// Who a player is, the parts that do not change while they are connected: their id, which planet they are
+// on, which of the character pool they wear, and the name over their head. Character and name ride here,
+// sent once on join, rather than in every snapshot thirty times a second forever.
 type PlayerInfo struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	PlanetId      uint32                 `protobuf:"varint,2,opt,name=planet_id,json=planetId,proto3" json:"planet_id,omitempty"`
+	Character     string                 `protobuf:"bytes,3,opt,name=character,proto3" json:"character,omitempty"` // a key into the client's model catalog, e.g. "wizard"
+	Name          string                 `protobuf:"bytes,4,opt,name=name,proto3" json:"name,omitempty"`           // the display name floated over the head
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -517,11 +519,26 @@ func (x *PlayerInfo) GetPlanetId() uint32 {
 	return 0
 }
 
-// Sent to a player the moment they join: their own id, so they can tell themselves apart in snapshots,
-// and the roster of everyone already here.
+func (x *PlayerInfo) GetCharacter() string {
+	if x != nil {
+		return x.Character
+	}
+	return ""
+}
+
+func (x *PlayerInfo) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+// Sent to a player the moment they join. you is their own id, character and name, so they can tell
+// themselves apart in snapshots and wear the character the server picked for them; players is the roster
+// of everyone already here.
 type Welcome struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	YourId        string                 `protobuf:"bytes,1,opt,name=your_id,json=yourId,proto3" json:"your_id,omitempty"`
+	You           *PlayerInfo            `protobuf:"bytes,1,opt,name=you,proto3" json:"you,omitempty"`
 	Players       []*PlayerInfo          `protobuf:"bytes,2,rep,name=players,proto3" json:"players,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -557,11 +574,11 @@ func (*Welcome) Descriptor() ([]byte, []int) {
 	return file_game_proto_rawDescGZIP(), []int{8}
 }
 
-func (x *Welcome) GetYourId() string {
+func (x *Welcome) GetYou() *PlayerInfo {
 	if x != nil {
-		return x.YourId
+		return x.You
 	}
-	return ""
+	return nil
 }
 
 func (x *Welcome) GetPlayers() []*PlayerInfo {
@@ -827,13 +844,15 @@ const file_game_proto_rawDesc = "" +
 	"\rClientMessage\x12'\n" +
 	"\x05input\x18\x01 \x01(\v2\x0f.punch.v1.InputH\x00R\x05input\x12$\n" +
 	"\x04ping\x18\x02 \x01(\v2\x0e.punch.v1.PingH\x00R\x04pingB\x06\n" +
-	"\x04body\"9\n" +
+	"\x04body\"k\n" +
 	"\n" +
 	"PlayerInfo\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1b\n" +
-	"\tplanet_id\x18\x02 \x01(\rR\bplanetId\"R\n" +
-	"\aWelcome\x12\x17\n" +
-	"\ayour_id\x18\x01 \x01(\tR\x06yourId\x12.\n" +
+	"\tplanet_id\x18\x02 \x01(\rR\bplanetId\x12\x1c\n" +
+	"\tcharacter\x18\x03 \x01(\tR\tcharacter\x12\x12\n" +
+	"\x04name\x18\x04 \x01(\tR\x04name\"a\n" +
+	"\aWelcome\x12&\n" +
+	"\x03you\x18\x01 \x01(\v2\x14.punch.v1.PlayerInfoR\x03you\x12.\n" +
 	"\aplayers\x18\x02 \x03(\v2\x14.punch.v1.PlayerInfoR\aplayers\"4\n" +
 	"\x04Join\x12,\n" +
 	"\x06player\x18\x01 \x01(\v2\x14.punch.v1.PlayerInfoR\x06player\"\x17\n" +
@@ -881,18 +900,19 @@ var file_game_proto_depIdxs = []int32{
 	2,  // 3: punch.v1.Snapshot.players:type_name -> punch.v1.PlayerSnapshot
 	1,  // 4: punch.v1.ClientMessage.input:type_name -> punch.v1.Input
 	4,  // 5: punch.v1.ClientMessage.ping:type_name -> punch.v1.Ping
-	7,  // 6: punch.v1.Welcome.players:type_name -> punch.v1.PlayerInfo
-	7,  // 7: punch.v1.Join.player:type_name -> punch.v1.PlayerInfo
-	3,  // 8: punch.v1.ServerMessage.snapshot:type_name -> punch.v1.Snapshot
-	8,  // 9: punch.v1.ServerMessage.welcome:type_name -> punch.v1.Welcome
-	9,  // 10: punch.v1.ServerMessage.join:type_name -> punch.v1.Join
-	10, // 11: punch.v1.ServerMessage.leave:type_name -> punch.v1.Leave
-	5,  // 12: punch.v1.ServerMessage.pong:type_name -> punch.v1.Pong
-	13, // [13:13] is the sub-list for method output_type
-	13, // [13:13] is the sub-list for method input_type
-	13, // [13:13] is the sub-list for extension type_name
-	13, // [13:13] is the sub-list for extension extendee
-	0,  // [0:13] is the sub-list for field type_name
+	7,  // 6: punch.v1.Welcome.you:type_name -> punch.v1.PlayerInfo
+	7,  // 7: punch.v1.Welcome.players:type_name -> punch.v1.PlayerInfo
+	7,  // 8: punch.v1.Join.player:type_name -> punch.v1.PlayerInfo
+	3,  // 9: punch.v1.ServerMessage.snapshot:type_name -> punch.v1.Snapshot
+	8,  // 10: punch.v1.ServerMessage.welcome:type_name -> punch.v1.Welcome
+	9,  // 11: punch.v1.ServerMessage.join:type_name -> punch.v1.Join
+	10, // 12: punch.v1.ServerMessage.leave:type_name -> punch.v1.Leave
+	5,  // 13: punch.v1.ServerMessage.pong:type_name -> punch.v1.Pong
+	14, // [14:14] is the sub-list for method output_type
+	14, // [14:14] is the sub-list for method input_type
+	14, // [14:14] is the sub-list for extension type_name
+	14, // [14:14] is the sub-list for extension extendee
+	0,  // [0:14] is the sub-list for field type_name
 }
 
 func init() { file_game_proto_init() }

@@ -60,18 +60,21 @@ message ClientMessage {
   }
 }
 
-// Who a player is, the parts that do not change while they are connected: their id and which planet they
-// are on. Name and character model join this at step 12; they ride here, sent once on join, rather than
-// in every snapshot thirty times a second forever.
+// Who a player is, the parts that do not change while they are connected: their id, which planet they are
+// on, which of the character pool they wear, and the name over their head. Character and name ride here,
+// sent once on join, rather than in every snapshot thirty times a second forever.
 message PlayerInfo {
   string id = 1;
   uint32 planet_id = 2;
+  string character = 3; // a key into the client's model catalog, e.g. "wizard"
+  string name = 4;      // the display name floated over the head
 }
 
-// Sent to a player the moment they join: their own id, so they can tell themselves apart in snapshots,
-// and the roster of everyone already here.
+// Sent to a player the moment they join. you is their own id, character and name, so they can tell
+// themselves apart in snapshots and wear the character the server picked for them; players is the roster
+// of everyone already here.
 message Welcome {
-  string your_id = 1;
+  PlayerInfo you = 1;
   repeated PlayerInfo players = 2;
 }
 

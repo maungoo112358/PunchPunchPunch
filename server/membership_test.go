@@ -30,6 +30,7 @@ func TestJoinRosterAndLeave(t *testing.T) {
 		path:     &path,
 		spawn:    sim.Vec3{X: 0, Y: sim.PlanetRadius, Z: 0},
 		welcomed: make(map[string]bool),
+		pool:     newPool(),
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -52,13 +53,16 @@ func TestJoinRosterAndLeave(t *testing.T) {
 	defer c1.CloseNow()
 
 	welcome := waitFor(t, c1, rw, func(m *pb.ServerMessage) bool { return m.GetWelcome() != nil }).GetWelcome()
-	if welcome.YourId == "" {
-		t.Fatal("welcome carried no id")
+	if welcome.You == nil || welcome.You.Id == "" {
+		t.Fatal("welcome carried no self info")
+	}
+	if welcome.You.Character == "" || welcome.You.Name == "" {
+		t.Fatalf("welcome should assign a character and name, got character=%q name=%q", welcome.You.Character, welcome.You.Name)
 	}
 	if len(welcome.Players) != 0 {
 		t.Fatalf("the first joiner's roster should be empty, got %d", len(welcome.Players))
 	}
-	firstID := welcome.YourId
+	firstID := welcome.You.Id
 
 	// Second client connects; the first should be told about it with a Join.
 	c2, _, err := websocket.Dial(rw, url, nil)

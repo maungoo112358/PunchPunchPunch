@@ -125,14 +125,14 @@ func (s *server) handleJoins(ctx context.Context, all []*Client, current map[str
 		// second sees the first.
 		roster := make([]*pb.PlayerInfo, 0, len(s.welcomed))
 		for other := range s.welcomed {
-			roster = append(roster, playerInfo(other))
+			roster = append(roster, playerInfo(current[other]))
 		}
 		s.sendMsg(ctx, c, &pb.ServerMessage{Body: &pb.ServerMessage_Welcome{Welcome: &pb.Welcome{
-			YourId:  c.ID,
+			You:     playerInfo(c),
 			Players: roster,
 		}}})
 
-		join := &pb.ServerMessage{Body: &pb.ServerMessage_Join{Join: &pb.Join{Player: playerInfo(c.ID)}}}
+		join := &pb.ServerMessage{Body: &pb.ServerMessage_Join{Join: &pb.Join{Player: playerInfo(c)}}}
 		for other := range s.welcomed {
 			s.sendMsg(ctx, current[other], join)
 		}
@@ -158,9 +158,11 @@ func (s *server) sendMsg(ctx context.Context, c *Client, msg *pb.ServerMessage) 
 	}
 }
 
-// playerInfo is the identity that rides join and roster messages. planetId is 0 until a second planet
-// exists; name and character model join it at step 12.
-func playerInfo(id string) *pb.PlayerInfo { return &pb.PlayerInfo{Id: id, PlanetId: 0} }
+// playerInfo is the identity that rides join and roster messages: id, character and name. planetId is 0
+// until a second planet exists.
+func playerInfo(c *Client) *pb.PlayerInfo {
+	return &pb.PlayerInfo{Id: c.ID, PlanetId: 0, Character: c.character, Name: c.name}
+}
 
 // send writes one already-encoded frame, as a text frame for JSON or a binary frame for protobuf, under
 // a short deadline so a slow client cannot stall the tick. The mutex serialises it against any other

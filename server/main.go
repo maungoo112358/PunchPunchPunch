@@ -74,6 +74,10 @@ type server struct {
 	// tick to find joins and leaves, so it stays the single writer to every socket. Only the tick loop
 	// touches it, so it needs no lock.
 	welcomed map[string]bool
+
+	// The bags of characters and names a joiner draws from. Guarded by its own lock because connections
+	// draw and return concurrently.
+	pool *pool
 }
 
 func main() {
@@ -91,6 +95,7 @@ func main() {
 		path:     &path,
 		spawn:    sim.Vec3{X: 0, Y: planet.Radius, Z: 0}, // north pole, where up is +Y
 		welcomed: make(map[string]bool),
+		pool:     newPool(),
 	}
 
 	mux := http.NewServeMux()
@@ -154,11 +159,21 @@ func (s *server) handleWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client := s.hub.Add(conn, r.RemoteAddr, s.spawn)
-	log.Printf("join  %s from %s (%d connected)", client.ID, client.Addr, s.hub.Count())
+	// Draw a character and a name before registering. An empty character bag means the game is full, and
+	// the honest answer for a demo is to turn this connection away.
+	character, name, ok := s.pool.take()
+	if !ok {
+		log.Printf("full  refused %s, no character free", r.RemoteAddr)
+		conn.Close(websocket.StatusTryAgainLater, "server full")
+		return
+	}
+
+	client := s.hub.Add(conn, r.RemoteAddr, s.spawn, character, name)
+	log.Printf("join  %s (%s the %s) from %s (%d connected)", client.ID, name, character, client.Addr, s.hub.Count())
 
 	defer func() {
 		s.hub.Remove(client.ID)
+		s.pool.give(character, name)
 		conn.CloseNow()
 		log.Printf("drop  %s (%d connected)", client.ID, s.hub.Count())
 	}()

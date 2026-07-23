@@ -47,6 +47,12 @@ type Client struct {
 	// How this connection wants its snapshots encoded. Step 9 uses JSON for everyone so the frames read
 	// plainly in devtools and the log; step 14 sets this per connection from the socket URL.
 	enc wire.Encoding
+
+	// Drawn from the pool when the socket opens, put back when it closes. character is a key the client
+	// maps to a model; name floats over the head. They never change while connected, so they ride the
+	// join and roster messages, not the snapshot.
+	character string
+	name      string
 }
 
 // offer queues an input for the next tick, dropping it if the inbox is already full. Non-blocking, so a
@@ -79,20 +85,23 @@ func NewHub() *Hub {
 	return &Hub{clients: make(map[string]*Client)}
 }
 
-// Add registers a socket and hands back the client, spawned and ready to be ticked. Ids are just a
-// counter for now. Step 12 gives players a real name and a character to go with it.
-func (h *Hub) Add(conn *websocket.Conn, addr string, spawn sim.Vec3) *Client {
+// Add registers a socket and hands back the client, spawned and ready to be ticked. The character and
+// name are drawn from the pool by the caller before this, so they are set here under the same lock that
+// makes the client visible, and the tick loop never sees a client without them.
+func (h *Hub) Add(conn *websocket.Conn, addr string, spawn sim.Vec3, character, name string) *Client {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
 	h.nextID++
 	c := &Client{
-		ID:    "p" + strconv.FormatInt(h.nextID, 10),
-		Addr:  addr,
-		conn:  conn,
-		state: sim.NewPlayerState(spawn, sim.Vec3{X: 0, Y: 0, Z: 1}),
-		inbox: make(chan sim.Input, inboxSize),
-		enc:   wire.JSON,
+		ID:        "p" + strconv.FormatInt(h.nextID, 10),
+		Addr:      addr,
+		conn:      conn,
+		state:     sim.NewPlayerState(spawn, sim.Vec3{X: 0, Y: 0, Z: 1}),
+		inbox:     make(chan sim.Input, inboxSize),
+		enc:       wire.JSON,
+		character: character,
+		name:      name,
 	}
 	h.clients[c.ID] = c
 	return c

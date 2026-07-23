@@ -30,6 +30,7 @@ func TestPingIsAnsweredWithPong(t *testing.T) {
 		path:     &path,
 		spawn:    sim.Vec3{X: 0, Y: sim.PlanetRadius, Z: 0},
 		welcomed: make(map[string]bool),
+		pool:     newPool(),
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

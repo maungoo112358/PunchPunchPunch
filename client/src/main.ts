@@ -20,6 +20,8 @@ import { createSunFollow } from "./systems/sunFollow.js";
 import { createSession } from "./net/session.js";
 import { createTimeSync } from "./net/timeSync.js";
 import { createWorldSync } from "./systems/worldSync.js";
+import { preloadModels } from "./entities/Character.js";
+import { ALL_MODELS } from "./config/characters.js";
 import { COLORS } from "./config/palette.js";
 import type { PropEditor } from "./systems/propEditor.js";
 import type { DebugOverlay } from "./systems/debugOverlay.js";
@@ -56,6 +58,9 @@ const spawn = new THREE.Vector3(0, planet.radius, 0);
 const world = createWorld();
 const localPlayer = world.add(LOCAL_ID, spawn);
 const view = createWorldView(scene, world, planet);
+// Fetch and parse all five character models now, so a joiner wears theirs the instant the server names
+// it instead of popping in a moment later.
+preloadModels(ALL_MODELS);
 // The camera, the grass parting and the sun's shadow all follow you specifically, so they need your
 // character object now. Its model is null until the glTF loads, which all three already handle.
 const character = view.characterFor(LOCAL_ID);

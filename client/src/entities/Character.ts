@@ -21,6 +21,12 @@ function loadModel(url: string) {
   return pending;
 }
 
+// Warm the shared cache so every character model is fetched and parsed at boot, not the moment someone
+// joins wearing one, which would leave them as nothing on screen for a beat.
+export function preloadModels(urls: string[]) {
+  for (const url of urls) loadModel(url);
+}
+
 // Reused scratch for orient() so we don't allocate every frame.
 const _fwd = new THREE.Vector3();
 const _right = new THREE.Vector3();
@@ -131,18 +137,34 @@ export class Character {
   mixer: THREE.AnimationMixer | null;
   actions: Record<string, THREE.AnimationAction>;
   current: string | null;
+  modelUrl: string | null; // the model currently loaded or loading, so setModel can no-op a repeat
 
-  constructor(scene: THREE.Scene, modelUrl: string, spawn: THREE.Vector3 | null = null) {
+  // modelUrl may be null: the instance exists (so the camera, grass and nameplate can hold it) but wears
+  // nothing until setModel is called, which is what lets a player's model wait for the server to say which.
+  constructor(scene: THREE.Scene, modelUrl: string | null = null, spawn: THREE.Vector3 | null = null) {
     this.scene = scene;
     this.spawn = spawn; // optional world spawn position, applied once the model loads
     this.model = null; // glTF root once loaded
     this.mixer = null; // AnimationMixer (~ Unity Animator)
     this.actions = {}; // name -> AnimationAction (pre-built for crossfading)
     this.current = null; // name of the active action
+    this.modelUrl = null;
 
-    loadModel(modelUrl)
-      .then((gltf) => this._onLoad(gltf))
-      .catch((err) => console.error(`Failed to load ${modelUrl}:`, err));
+    if (modelUrl) this.setModel(modelUrl);
+  }
+
+  // Load a model, or swap to a different one, keeping this same Character instance so everything holding
+  // it stays valid. A no-op if already wearing this model. The load is shared and cached across
+  // characters, so a preloaded model swaps in with no fetch.
+  setModel(url: string) {
+    if (url === this.modelUrl) return;
+    this._clearModel();
+    this.modelUrl = url;
+    loadModel(url)
+      .then((gltf) => {
+        if (this.modelUrl === url) this._onLoad(gltf); // ignore a load that finished after another swap
+      })
+      .catch((err) => console.error(`Failed to load ${url}:`, err));
   }
 
   _onLoad(gltf: GLTF) {
@@ -267,10 +289,10 @@ export class Character {
     if (this.mixer) this.mixer.update(dt);
   }
 
-  // Take this character off the screen for good, for when a player leaves. Geometry and textures are
-  // shared with the master copy and the other characters, so they are deliberately left alone: this
-  // only drops the clone's own bits. The materials are made per character, so those do go.
-  dispose() {
+  // Take the current model off the screen and free its per-instance bits, keeping the instance itself so
+  // a new model can be set. Geometry and textures are shared with the master copy and the other
+  // characters, so they are deliberately left alone; the materials are made per character, so those go.
+  _clearModel() {
     if (this.mixer) this.mixer.stopAllAction();
     if (this.model) {
       this.scene.remove(this.model);
@@ -285,5 +307,12 @@ export class Character {
     this.mixer = null;
     this.actions = {};
     this.current = null;
+  }
+
+  // Take this character off the screen for good, for when a player leaves. After this the instance wears
+  // nothing and is done.
+  dispose() {
+    this._clearModel();
+    this.modelUrl = null;
   }
 }

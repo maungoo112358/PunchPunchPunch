@@ -14,6 +14,8 @@ export type WorldPlayer = {
   id: string;
   state: PlayerState; // where he is now, as of the last completed tick
   previous: PlayerState; // where he was one tick earlier, the other end of the blend
+  character: string; // which model to wear, a key into the character catalog; "" until the server says
+  name: string; // the name over the head; "" until the server says
 };
 
 export function createWorld() {
@@ -27,6 +29,8 @@ export function createWorld() {
         id,
         state: createPlayerState(spawn, facing),
         previous: createPlayerState(spawn, facing),
+        character: "",
+        name: "",
       };
       players.set(id, player);
       return player;

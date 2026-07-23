@@ -24,7 +24,7 @@ import (
 // origins here can be anything.
 func dialTestServer(t *testing.T, idle time.Duration) (*websocket.Conn, context.Context) {
 	t.Helper()
-	s := &server{hub: NewHub(), origins: []string{"*"}, idle: idle}
+	s := &server{hub: NewHub(), origins: []string{"*"}, idle: idle, pool: newPool()}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ws", s.handleWS)
 	ts := httptest.NewServer(mux)

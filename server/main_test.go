@@ -21,7 +21,7 @@ import (
 func testServer(t *testing.T) (*server, string) {
 	t.Helper()
 
-	s := &server{hub: NewHub(), origins: []string{"localhost:5173"}}
+	s := &server{hub: NewHub(), origins: []string{"localhost:5173"}, pool: newPool()}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ws", s.handleWS)
 	httpServer := httptest.NewServer(mux)

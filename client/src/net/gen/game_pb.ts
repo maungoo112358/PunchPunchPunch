@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file game.proto.
  */
 export const file_game: GenFile = /*@__PURE__*/
-  fileDesc("CgpnYW1lLnByb3RvEghwdW5jaC52MSInCgRWZWMzEgkKAXgYASABKAESCQoBeRgCIAEoARIJCgF6GAMgASgBIjEKBUlucHV0EgsKA3NlcRgBIAEoDRIbCgNkaXIYAiABKAsyDi5wdW5jaC52MS5WZWMzIoABCg5QbGF5ZXJTbmFwc2hvdBIKCgJpZBgBIAEoCRIRCglwbGFuZXRfaWQYAiABKA0SIAoIcG9zaXRpb24YAyABKAsyDi5wdW5jaC52MS5WZWMzEh8KB2ZvcndhcmQYBCABKAsyDi5wdW5jaC52MS5WZWMzEgwKBGFuaW0YBSABKAkiUAoIU25hcHNob3QSDAoEdGljaxgBIAEoDRILCgNhY2sYAiABKA0SKQoHcGxheWVycxgDIAMoCzIYLnB1bmNoLnYxLlBsYXllclNuYXBzaG90IhsKBFBpbmcSEwoLY2xpZW50X3RpbWUYASABKAEiMAoEUG9uZxITCgtjbGllbnRfdGltZRgBIAEoARITCgtzZXJ2ZXJfdGljaxgCIAEoDSJZCg1DbGllbnRNZXNzYWdlEiAKBWlucHV0GAEgASgLMg8ucHVuY2gudjEuSW5wdXRIABIeCgRwaW5nGAIgASgLMg4ucHVuY2gudjEuUGluZ0gAQgYKBGJvZHkiKwoKUGxheWVySW5mbxIKCgJpZBgBIAEoCRIRCglwbGFuZXRfaWQYAiABKA0iQQoHV2VsY29tZRIPCgd5b3VyX2lkGAEgASgJEiUKB3BsYXllcnMYAiADKAsyFC5wdW5jaC52MS5QbGF5ZXJJbmZvIiwKBEpvaW4SJAoGcGxheWVyGAEgASgLMhQucHVuY2gudjEuUGxheWVySW5mbyITCgVMZWF2ZRIKCgJpZBgBIAEoCSLHAQoNU2VydmVyTWVzc2FnZRImCghzbmFwc2hvdBgBIAEoCzISLnB1bmNoLnYxLlNuYXBzaG90SAASJAoHd2VsY29tZRgCIAEoCzIRLnB1bmNoLnYxLldlbGNvbWVIABIeCgRqb2luGAMgASgLMg4ucHVuY2gudjEuSm9pbkgAEiAKBWxlYXZlGAQgASgLMg8ucHVuY2gudjEuTGVhdmVIABIeCgRwb25nGAUgASgLMg4ucHVuY2gudjEuUG9uZ0gAQgYKBGJvZHlCKloocHVuY2hwdW5jaHB1bmNoL3NlcnZlci9nZW4vZ2FtZXBiO2dhbWVwYmIGcHJvdG8z");
+  fileDesc("CgpnYW1lLnByb3RvEghwdW5jaC52MSInCgRWZWMzEgkKAXgYASABKAESCQoBeRgCIAEoARIJCgF6GAMgASgBIjEKBUlucHV0EgsKA3NlcRgBIAEoDRIbCgNkaXIYAiABKAsyDi5wdW5jaC52MS5WZWMzIoABCg5QbGF5ZXJTbmFwc2hvdBIKCgJpZBgBIAEoCRIRCglwbGFuZXRfaWQYAiABKA0SIAoIcG9zaXRpb24YAyABKAsyDi5wdW5jaC52MS5WZWMzEh8KB2ZvcndhcmQYBCABKAsyDi5wdW5jaC52MS5WZWMzEgwKBGFuaW0YBSABKAkiUAoIU25hcHNob3QSDAoEdGljaxgBIAEoDRILCgNhY2sYAiABKA0SKQoHcGxheWVycxgDIAMoCzIYLnB1bmNoLnYxLlBsYXllclNuYXBzaG90IhsKBFBpbmcSEwoLY2xpZW50X3RpbWUYASABKAEiMAoEUG9uZxITCgtjbGllbnRfdGltZRgBIAEoARITCgtzZXJ2ZXJfdGljaxgCIAEoDSJZCg1DbGllbnRNZXNzYWdlEiAKBWlucHV0GAEgASgLMg8ucHVuY2gudjEuSW5wdXRIABIeCgRwaW5nGAIgASgLMg4ucHVuY2gudjEuUGluZ0gAQgYKBGJvZHkiTAoKUGxheWVySW5mbxIKCgJpZBgBIAEoCRIRCglwbGFuZXRfaWQYAiABKA0SEQoJY2hhcmFjdGVyGAMgASgJEgwKBG5hbWUYBCABKAkiUwoHV2VsY29tZRIhCgN5b3UYASABKAsyFC5wdW5jaC52MS5QbGF5ZXJJbmZvEiUKB3BsYXllcnMYAiADKAsyFC5wdW5jaC52MS5QbGF5ZXJJbmZvIiwKBEpvaW4SJAoGcGxheWVyGAEgASgLMhQucHVuY2gudjEuUGxheWVySW5mbyITCgVMZWF2ZRIKCgJpZBgBIAEoCSLHAQoNU2VydmVyTWVzc2FnZRImCghzbmFwc2hvdBgBIAEoCzISLnB1bmNoLnYxLlNuYXBzaG90SAASJAoHd2VsY29tZRgCIAEoCzIRLnB1bmNoLnYxLldlbGNvbWVIABIeCgRqb2luGAMgASgLMg4ucHVuY2gudjEuSm9pbkgAEiAKBWxlYXZlGAQgASgLMg8ucHVuY2gudjEuTGVhdmVIABIeCgRwb25nGAUgASgLMg4ucHVuY2gudjEuUG9uZ0gAQgYKBGJvZHlCKloocHVuY2hwdW5jaHB1bmNoL3NlcnZlci9nZW4vZ2FtZXBiO2dhbWVwYmIGcHJvdG8z");
 
 /**
  * A point or direction in world space. double, not float, because the sim runs in float64 on both
@@ -216,9 +216,9 @@ export const ClientMessageSchema: GenMessage<ClientMessage> = /*@__PURE__*/
   messageDesc(file_game, 6);
 
 /**
- * Who a player is, the parts that do not change while they are connected: their id and which planet they
- * are on. Name and character model join this at step 12; they ride here, sent once on join, rather than
- * in every snapshot thirty times a second forever.
+ * Who a player is, the parts that do not change while they are connected: their id, which planet they are
+ * on, which of the character pool they wear, and the name over their head. Character and name ride here,
+ * sent once on join, rather than in every snapshot thirty times a second forever.
  *
  * @generated from message punch.v1.PlayerInfo
  */
@@ -232,6 +232,20 @@ export type PlayerInfo = Message<"punch.v1.PlayerInfo"> & {
    * @generated from field: uint32 planet_id = 2;
    */
   planetId: number;
+
+  /**
+   * a key into the client's model catalog, e.g. "wizard"
+   *
+   * @generated from field: string character = 3;
+   */
+  character: string;
+
+  /**
+   * the display name floated over the head
+   *
+   * @generated from field: string name = 4;
+   */
+  name: string;
 };
 
 /**
@@ -242,16 +256,17 @@ export const PlayerInfoSchema: GenMessage<PlayerInfo> = /*@__PURE__*/
   messageDesc(file_game, 7);
 
 /**
- * Sent to a player the moment they join: their own id, so they can tell themselves apart in snapshots,
- * and the roster of everyone already here.
+ * Sent to a player the moment they join. you is their own id, character and name, so they can tell
+ * themselves apart in snapshots and wear the character the server picked for them; players is the roster
+ * of everyone already here.
  *
  * @generated from message punch.v1.Welcome
  */
 export type Welcome = Message<"punch.v1.Welcome"> & {
   /**
-   * @generated from field: string your_id = 1;
+   * @generated from field: punch.v1.PlayerInfo you = 1;
    */
-  yourId: string;
+  you?: PlayerInfo | undefined;
 
   /**
    * @generated from field: repeated punch.v1.PlayerInfo players = 2;

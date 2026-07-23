@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { TICK_HZ } from "./sim.js";
+import { LOCAL_ID } from "./world.js";
 import type { World } from "./world.js";
 import type { Planet } from "../world/planet.js";
 import type { Welcome, Join, Leave, Snapshot, PlayerInfo } from "../net/gen/game_pb.js";
@@ -45,10 +46,13 @@ export function createWorldSync(world: World, planet: Planet, spawn: THREE.Vecto
 
   function addRemote(info: PlayerInfo) {
     if (info.id === myId) return;
-    if (!world.players.has(info.id)) {
-      world.add(info.id, spawn);
+    let player = world.players.get(info.id);
+    if (!player) {
+      player = world.add(info.id, spawn);
       remotes.add(info.id);
     }
+    player.character = info.character; // the model to wear, and the name over the head, both fixed for
+    player.name = info.name; // the connection, so it is safe to just set them here on join
   }
 
   function removeRemote(id: string) {
@@ -65,7 +69,16 @@ export function createWorldSync(world: World, planet: Planet, spawn: THREE.Vecto
     },
 
     onWelcome(welcome: Welcome) {
-      myId = welcome.yourId;
+      // you is our own id, character and name; apply it to the local player, which is drawn under LOCAL_ID
+      // from prediction. This is what dresses your own avatar in the character the server picked for you.
+      if (welcome.you) {
+        myId = welcome.you.id;
+        const local = world.players.get(LOCAL_ID);
+        if (local) {
+          local.character = welcome.you.character;
+          local.name = welcome.you.name;
+        }
+      }
       for (const info of welcome.players) addRemote(info);
     },
 
