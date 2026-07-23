@@ -6,3 +6,6 @@
 declare module "node:fs" {
   export function writeFileSync(path: string, data: string): void;
 }
+
+// Just enough of process for a check script to set its exit code, same spirit as above: no @types/node.
+declare const process: { exit(code?: number): never };

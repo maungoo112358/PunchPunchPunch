@@ -1,0 +1,11 @@
+version: v2
+lint:
+  use:
+    - STANDARD
+  except:
+    # We keep the one schema flat at proto/game.proto. This rule wants package punch.v1 to live under
+    # a punch/v1/ directory, which only earns its keep once there are many packages, not one file.
+    - PACKAGE_DIRECTORY_MATCH
+breaking:
+  use:
+    - FILE

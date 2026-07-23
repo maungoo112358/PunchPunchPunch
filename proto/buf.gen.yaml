@@ -1,0 +1,19 @@
+# How the one schema turns into two languages. Run through proto/gen.sh, not by hand, so the plugin
+# paths and options stay in one place. clean wipes the two output dirs first so a renamed or deleted
+# message never leaves a stale file behind.
+version: v2
+clean: true
+plugins:
+  # Go, straight into the server tree. source_relative keeps the file next to where the .proto sits in
+  # the layout instead of nesting it under the full import path.
+  - local: protoc-gen-go
+    out: server/gen/gamepb
+    opt: paths=source_relative
+
+  # TypeScript, into the client. import_extension=js appends .js to its own imports, which is what this
+  # repo's ESM setup wants (the same reason our hand-written imports carry .js).
+  - local: client/node_modules/.bin/protoc-gen-es
+    out: client/src/net/gen
+    opt:
+      - target=ts
+      - import_extension=js

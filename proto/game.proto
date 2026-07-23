@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+package punch.v1;
+
+option go_package = "punchpunchpunch/server/gen/gamepb;gamepb";
+
+// A point or direction in world space. double, not float, because the sim runs in float64 on both
+// sides and reconciliation replays through these positions, so the low bits have to survive the wire.
+message Vec3 {
+  double x = 1;
+  double y = 2;
+  double z = 3;
+}
+
+// One tick of intent from a client. dir is already world space and its length is the speed, so walk
+// versus run rides in the same three numbers. seq counts ticks up forever, and the server echoes the
+// last one it processed back in Snapshot.ack.
+message Input {
+  uint32 seq = 1;
+  Vec3 dir = 2;
+}
+
+// One player as the snapshot sees them. Name and character model are NOT here: they never change while
+// connected, so they ride the join and roster messages instead of thirty times a second forever.
+message PlayerSnapshot {
+  string id = 1;
+  uint32 planet_id = 2;
+  Vec3 position = 3;
+  Vec3 forward = 4;
+  string anim = 5;
+}
+
+// The whole world at one server tick. ack is the last input seq the server processed for the client
+// receiving this snapshot, which is how that client knows which predicted inputs still need replaying.
+message Snapshot {
+  uint32 tick = 1;
+  uint32 ack = 2;
+  repeated PlayerSnapshot players = 3;
+}
+
+// Everything a client can send. A oneof so later steps add join, chat and the rest as new variants
+// without reshaping the socket.
+message ClientMessage {
+  oneof body {
+    Input input = 1;
+  }
+}
+
+// Everything the server can send. The same extension point: roster and join land here later.
+message ServerMessage {
+  oneof body {
+    Snapshot snapshot = 1;
+  }
+}

@@ -10,6 +10,7 @@
     "deploy": "npm run build && firebase deploy --only hosting",
     "typecheck": "tsc --noEmit",
     "typecheck:watch": "tsc --noEmit --watch",
+    "test:codec": "tsc src/tools/checkCodec.ts src/tools/node.d.ts --outDir .tools --module esnext --target es2022 --moduleResolution bundler --skipLibCheck && node .tools/tools/checkCodec.js",
     "gen:trajectory": "tsc src/tools/genTrajectory.ts src/tools/node.d.ts --outDir .tools --module esnext --target es2022 --moduleResolution node --skipLibCheck && node .tools/tools/genTrajectory.js"
   },
   "keywords": [],
@@ -17,9 +18,11 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@bufbuild/protobuf": "^2.13.0",
     "three": "^0.184.0"
   },
   "devDependencies": {
+    "@bufbuild/protoc-gen-es": "^2.13.0",
     "@types/js-yaml": "^4.0.9",
     "@types/three": "^0.184.1",
     "firebase-tools": "^15.24.0",
