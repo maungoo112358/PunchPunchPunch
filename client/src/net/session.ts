@@ -2,7 +2,7 @@ import { create } from "@bufbuild/protobuf";
 import { createConnection } from "./connection.js";
 import { encode, decode, type Encoding } from "./codec.js";
 import { ClientMessageSchema, ServerMessageSchema } from "./gen/game_pb.js";
-import type { Welcome, Join, Leave, Snapshot } from "./gen/game_pb.js";
+import type { Welcome, Join, Leave, Snapshot, Pong } from "./gen/game_pb.js";
 import type { MoveInput } from "../systems/sim.js";
 
 // The game's own view of the socket: send your input, and be told what the server says. It owns the two
@@ -20,6 +20,7 @@ export type ServerHandlers = {
   onJoin(join: Join): void;
   onLeave(leave: Leave): void;
   onSnapshot(snapshot: Snapshot): void;
+  onPong(pong: Pong): void;
 };
 
 export function createSession(url: string, handlers: ServerHandlers) {
@@ -38,6 +39,9 @@ export function createSession(url: string, handlers: ServerHandlers) {
       case "snapshot":
         handlers.onSnapshot(message.body.value);
         break;
+      case "pong":
+        handlers.onPong(message.body.value);
+        break;
     }
   });
 
@@ -54,6 +58,12 @@ export function createSession(url: string, handlers: ServerHandlers) {
           value: { seq: input.seq, dir: { x: input.dir.x, y: input.dir.y, z: input.dir.z } },
         },
       });
+      connection.send(encode(ClientMessageSchema, message, ENCODING));
+    },
+
+    // Send a clock probe stamped with the current time, to be echoed back in a pong.
+    sendPing(clientTime: number) {
+      const message = create(ClientMessageSchema, { body: { case: "ping", value: { clientTime } } });
       connection.send(encode(ClientMessageSchema, message, ENCODING));
     },
 

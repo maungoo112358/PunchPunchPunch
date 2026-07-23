@@ -57,7 +57,7 @@ func (s *server) tick(ctx context.Context) {
 	if len(s.welcomed) == 0 {
 		return
 	}
-	s.tickNum++
+	tick := s.tickNum.Add(1)
 
 	// Advance each player by one input, or hold still if none arrived in time for this tick.
 	for id := range s.welcomed {
@@ -87,7 +87,7 @@ func (s *server) tick(ctx context.Context) {
 	for id := range s.welcomed {
 		c := current[id]
 		s.sendMsg(ctx, c, &pb.ServerMessage{Body: &pb.ServerMessage_Snapshot{Snapshot: &pb.Snapshot{
-			Tick:    s.tickNum,
+			Tick:    tick,
 			Ack:     c.lastSeq,
 			Players: players,
 		}}})
@@ -163,7 +163,8 @@ func (s *server) sendMsg(ctx context.Context, c *Client, msg *pb.ServerMessage) 
 func playerInfo(id string) *pb.PlayerInfo { return &pb.PlayerInfo{Id: id, PlanetId: 0} }
 
 // send writes one already-encoded frame, as a text frame for JSON or a binary frame for protobuf, under
-// a short deadline so a slow client cannot stall the tick.
+// a short deadline so a slow client cannot stall the tick. The mutex serialises it against any other
+// goroutine sending on the same socket, which coder/websocket requires.
 func (c *Client) send(ctx context.Context, data []byte, text bool) error {
 	kind := websocket.MessageBinary
 	if text {
@@ -171,6 +172,8 @@ func (c *Client) send(ctx context.Context, data []byte, text bool) error {
 	}
 	writeCtx, cancel := context.WithTimeout(ctx, writeTimeout)
 	defer cancel()
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
 	return c.conn.Write(writeCtx, kind, data)
 }
 

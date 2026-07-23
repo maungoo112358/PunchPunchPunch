@@ -30,6 +30,11 @@ type Client struct {
 	Addr string // where they connected from, for the log
 	conn *websocket.Conn
 
+	// Guards writes to conn. The tick loop sends snapshots and membership, and the read goroutine answers
+	// a ping with a pong, so two goroutines can reach for the socket at once. coder/websocket forbids
+	// concurrent writes, so every send takes this first.
+	writeMu sync.Mutex
+
 	// The game state. Only the tick loop ever touches these, so they need no lock of their own: one
 	// goroutine writes them, and it is the same one that reads them to build the snapshot.
 	state   sim.PlayerState

@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -65,7 +66,9 @@ type server struct {
 	planet  sim.Planet
 	path    *sim.Path
 	spawn   sim.Vec3
-	tickNum uint32 // counts up forever, stamped on every snapshot; only the tick loop touches it
+	// counts up forever, stamped on every snapshot. Atomic because the tick loop bumps it while the read
+	// goroutine reads it to answer a ping.
+	tickNum atomic.Uint32
 
 	// Who has been welcomed and is in play. The tick loop diffs this against the live connections each
 	// tick to find joins and leaves, so it stays the single writer to every socket. Only the tick loop
@@ -188,16 +191,23 @@ func (s *server) handleWS(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Decode the frame and, if it is an input, hand it to the tick loop. A text frame is JSON and a
-		// binary frame is protobuf, which is all Decode needs to pick the right reader. Anything that is
-		// not an input is ignored for now; join and the rest arrive in later steps.
+		// Decode the frame. A text frame is JSON and a binary frame is protobuf, which is all Decode needs
+		// to pick the right reader. An input goes to the tick loop; a ping is answered here and now, from
+		// this goroutine, so the round trip the client measures is not padded by waiting for the next tick.
 		var msg pb.ClientMessage
 		if err := wire.Decode(&msg, data, kind == websocket.MessageText); err != nil {
 			log.Printf("bad   %s message: %v", client.ID, err)
 			continue
 		}
-		if in := msg.GetInput(); in != nil {
-			client.offer(pbToInput(in))
+		switch body := msg.Body.(type) {
+		case *pb.ClientMessage_Input:
+			client.offer(pbToInput(body.Input))
+		case *pb.ClientMessage_Ping:
+			pong := &pb.ServerMessage{Body: &pb.ServerMessage_Pong{Pong: &pb.Pong{
+				ClientTime: body.Ping.ClientTime,
+				ServerTick: s.tickNum.Load(),
+			}}}
+			s.sendMsg(r.Context(), client, pong)
 		}
 	}
 }

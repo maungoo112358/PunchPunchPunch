@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file game.proto.
  */
 export const file_game: GenFile = /*@__PURE__*/
-  fileDesc("CgpnYW1lLnByb3RvEghwdW5jaC52MSInCgRWZWMzEgkKAXgYASABKAESCQoBeRgCIAEoARIJCgF6GAMgASgBIjEKBUlucHV0EgsKA3NlcRgBIAEoDRIbCgNkaXIYAiABKAsyDi5wdW5jaC52MS5WZWMzIoABCg5QbGF5ZXJTbmFwc2hvdBIKCgJpZBgBIAEoCRIRCglwbGFuZXRfaWQYAiABKA0SIAoIcG9zaXRpb24YAyABKAsyDi5wdW5jaC52MS5WZWMzEh8KB2ZvcndhcmQYBCABKAsyDi5wdW5jaC52MS5WZWMzEgwKBGFuaW0YBSABKAkiUAoIU25hcHNob3QSDAoEdGljaxgBIAEoDRILCgNhY2sYAiABKA0SKQoHcGxheWVycxgDIAMoCzIYLnB1bmNoLnYxLlBsYXllclNuYXBzaG90IjkKDUNsaWVudE1lc3NhZ2USIAoFaW5wdXQYASABKAsyDy5wdW5jaC52MS5JbnB1dEgAQgYKBGJvZHkiKwoKUGxheWVySW5mbxIKCgJpZBgBIAEoCRIRCglwbGFuZXRfaWQYAiABKA0iQQoHV2VsY29tZRIPCgd5b3VyX2lkGAEgASgJEiUKB3BsYXllcnMYAiADKAsyFC5wdW5jaC52MS5QbGF5ZXJJbmZvIiwKBEpvaW4SJAoGcGxheWVyGAEgASgLMhQucHVuY2gudjEuUGxheWVySW5mbyITCgVMZWF2ZRIKCgJpZBgBIAEoCSKnAQoNU2VydmVyTWVzc2FnZRImCghzbmFwc2hvdBgBIAEoCzISLnB1bmNoLnYxLlNuYXBzaG90SAASJAoHd2VsY29tZRgCIAEoCzIRLnB1bmNoLnYxLldlbGNvbWVIABIeCgRqb2luGAMgASgLMg4ucHVuY2gudjEuSm9pbkgAEiAKBWxlYXZlGAQgASgLMg8ucHVuY2gudjEuTGVhdmVIAEIGCgRib2R5QipaKHB1bmNocHVuY2hwdW5jaC9zZXJ2ZXIvZ2VuL2dhbWVwYjtnYW1lcGJiBnByb3RvMw");
+  fileDesc("CgpnYW1lLnByb3RvEghwdW5jaC52MSInCgRWZWMzEgkKAXgYASABKAESCQoBeRgCIAEoARIJCgF6GAMgASgBIjEKBUlucHV0EgsKA3NlcRgBIAEoDRIbCgNkaXIYAiABKAsyDi5wdW5jaC52MS5WZWMzIoABCg5QbGF5ZXJTbmFwc2hvdBIKCgJpZBgBIAEoCRIRCglwbGFuZXRfaWQYAiABKA0SIAoIcG9zaXRpb24YAyABKAsyDi5wdW5jaC52MS5WZWMzEh8KB2ZvcndhcmQYBCABKAsyDi5wdW5jaC52MS5WZWMzEgwKBGFuaW0YBSABKAkiUAoIU25hcHNob3QSDAoEdGljaxgBIAEoDRILCgNhY2sYAiABKA0SKQoHcGxheWVycxgDIAMoCzIYLnB1bmNoLnYxLlBsYXllclNuYXBzaG90IhsKBFBpbmcSEwoLY2xpZW50X3RpbWUYASABKAEiMAoEUG9uZxITCgtjbGllbnRfdGltZRgBIAEoARITCgtzZXJ2ZXJfdGljaxgCIAEoDSJZCg1DbGllbnRNZXNzYWdlEiAKBWlucHV0GAEgASgLMg8ucHVuY2gudjEuSW5wdXRIABIeCgRwaW5nGAIgASgLMg4ucHVuY2gudjEuUGluZ0gAQgYKBGJvZHkiKwoKUGxheWVySW5mbxIKCgJpZBgBIAEoCRIRCglwbGFuZXRfaWQYAiABKA0iQQoHV2VsY29tZRIPCgd5b3VyX2lkGAEgASgJEiUKB3BsYXllcnMYAiADKAsyFC5wdW5jaC52MS5QbGF5ZXJJbmZvIiwKBEpvaW4SJAoGcGxheWVyGAEgASgLMhQucHVuY2gudjEuUGxheWVySW5mbyITCgVMZWF2ZRIKCgJpZBgBIAEoCSLHAQoNU2VydmVyTWVzc2FnZRImCghzbmFwc2hvdBgBIAEoCzISLnB1bmNoLnYxLlNuYXBzaG90SAASJAoHd2VsY29tZRgCIAEoCzIRLnB1bmNoLnYxLldlbGNvbWVIABIeCgRqb2luGAMgASgLMg4ucHVuY2gudjEuSm9pbkgAEiAKBWxlYXZlGAQgASgLMg8ucHVuY2gudjEuTGVhdmVIABIeCgRwb25nGAUgASgLMg4ucHVuY2gudjEuUG9uZ0gAQgYKBGJvZHlCKloocHVuY2hwdW5jaHB1bmNoL3NlcnZlci9nZW4vZ2FtZXBiO2dhbWVwYmIGcHJvdG8z");
 
 /**
  * A point or direction in world space. double, not float, because the sim runs in float64 on both
@@ -139,8 +139,53 @@ export const SnapshotSchema: GenMessage<Snapshot> = /*@__PURE__*/
   messageDesc(file_game, 3);
 
 /**
- * Everything a client can send. A oneof so later steps add join, chat and the rest as new variants
- * without reshaping the socket.
+ * A clock probe. client_time is the sender's own timestamp in milliseconds, echoed back in the Pong so
+ * the client can measure the round trip and line its clock up with the server's.
+ *
+ * @generated from message punch.v1.Ping
+ */
+export type Ping = Message<"punch.v1.Ping"> & {
+  /**
+   * @generated from field: double client_time = 1;
+   */
+  clientTime: number;
+};
+
+/**
+ * Describes the message punch.v1.Ping.
+ * Use `create(PingSchema)` to create a new message.
+ */
+export const PingSchema: GenMessage<Ping> = /*@__PURE__*/
+  messageDesc(file_game, 4);
+
+/**
+ * The reply to a Ping. It carries back the client's own timestamp and the server's current tick, which
+ * together let the client estimate how far ahead the server's clock is and render remotes in its past.
+ *
+ * @generated from message punch.v1.Pong
+ */
+export type Pong = Message<"punch.v1.Pong"> & {
+  /**
+   * @generated from field: double client_time = 1;
+   */
+  clientTime: number;
+
+  /**
+   * @generated from field: uint32 server_tick = 2;
+   */
+  serverTick: number;
+};
+
+/**
+ * Describes the message punch.v1.Pong.
+ * Use `create(PongSchema)` to create a new message.
+ */
+export const PongSchema: GenMessage<Pong> = /*@__PURE__*/
+  messageDesc(file_game, 5);
+
+/**
+ * Everything a client can send. A oneof so later steps add chat and the rest as new variants without
+ * reshaping the socket.
  *
  * @generated from message punch.v1.ClientMessage
  */
@@ -154,6 +199,12 @@ export type ClientMessage = Message<"punch.v1.ClientMessage"> & {
      */
     value: Input;
     case: "input";
+  } | {
+    /**
+     * @generated from field: punch.v1.Ping ping = 2;
+     */
+    value: Ping;
+    case: "ping";
   } | { case: undefined; value?: undefined };
 };
 
@@ -162,7 +213,7 @@ export type ClientMessage = Message<"punch.v1.ClientMessage"> & {
  * Use `create(ClientMessageSchema)` to create a new message.
  */
 export const ClientMessageSchema: GenMessage<ClientMessage> = /*@__PURE__*/
-  messageDesc(file_game, 4);
+  messageDesc(file_game, 6);
 
 /**
  * Who a player is, the parts that do not change while they are connected: their id and which planet they
@@ -188,7 +239,7 @@ export type PlayerInfo = Message<"punch.v1.PlayerInfo"> & {
  * Use `create(PlayerInfoSchema)` to create a new message.
  */
 export const PlayerInfoSchema: GenMessage<PlayerInfo> = /*@__PURE__*/
-  messageDesc(file_game, 5);
+  messageDesc(file_game, 7);
 
 /**
  * Sent to a player the moment they join: their own id, so they can tell themselves apart in snapshots,
@@ -213,7 +264,7 @@ export type Welcome = Message<"punch.v1.Welcome"> & {
  * Use `create(WelcomeSchema)` to create a new message.
  */
 export const WelcomeSchema: GenMessage<Welcome> = /*@__PURE__*/
-  messageDesc(file_game, 6);
+  messageDesc(file_game, 8);
 
 /**
  * Sent to everyone else when a player joins.
@@ -232,7 +283,7 @@ export type Join = Message<"punch.v1.Join"> & {
  * Use `create(JoinSchema)` to create a new message.
  */
 export const JoinSchema: GenMessage<Join> = /*@__PURE__*/
-  messageDesc(file_game, 7);
+  messageDesc(file_game, 9);
 
 /**
  * Sent to everyone when a player leaves, so their avatar can be removed.
@@ -251,11 +302,11 @@ export type Leave = Message<"punch.v1.Leave"> & {
  * Use `create(LeaveSchema)` to create a new message.
  */
 export const LeaveSchema: GenMessage<Leave> = /*@__PURE__*/
-  messageDesc(file_game, 8);
+  messageDesc(file_game, 10);
 
 /**
  * Everything the server can send. The oneof is the extension point promised in step 7: snapshot was the
- * only variant then, and join, the roster, and leaves land here now.
+ * only variant then, and join, the roster, leaves, and the pong reply land here now.
  *
  * @generated from message punch.v1.ServerMessage
  */
@@ -287,6 +338,12 @@ export type ServerMessage = Message<"punch.v1.ServerMessage"> & {
      */
     value: Leave;
     case: "leave";
+  } | {
+    /**
+     * @generated from field: punch.v1.Pong pong = 5;
+     */
+    value: Pong;
+    case: "pong";
   } | { case: undefined; value?: undefined };
 };
 
@@ -295,5 +352,5 @@ export type ServerMessage = Message<"punch.v1.ServerMessage"> & {
  * Use `create(ServerMessageSchema)` to create a new message.
  */
 export const ServerMessageSchema: GenMessage<ServerMessage> = /*@__PURE__*/
-  messageDesc(file_game, 9);
+  messageDesc(file_game, 11);
 

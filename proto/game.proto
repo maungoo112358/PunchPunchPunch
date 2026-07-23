@@ -38,11 +38,25 @@ message Snapshot {
   repeated PlayerSnapshot players = 3;
 }
 
-// Everything a client can send. A oneof so later steps add join, chat and the rest as new variants
-// without reshaping the socket.
+// A clock probe. client_time is the sender's own timestamp in milliseconds, echoed back in the Pong so
+// the client can measure the round trip and line its clock up with the server's.
+message Ping {
+  double client_time = 1;
+}
+
+// The reply to a Ping. It carries back the client's own timestamp and the server's current tick, which
+// together let the client estimate how far ahead the server's clock is and render remotes in its past.
+message Pong {
+  double client_time = 1;
+  uint32 server_tick = 2;
+}
+
+// Everything a client can send. A oneof so later steps add chat and the rest as new variants without
+// reshaping the socket.
 message ClientMessage {
   oneof body {
     Input input = 1;
+    Ping ping = 2;
   }
 }
 
@@ -72,12 +86,13 @@ message Leave {
 }
 
 // Everything the server can send. The oneof is the extension point promised in step 7: snapshot was the
-// only variant then, and join, the roster, and leaves land here now.
+// only variant then, and join, the roster, leaves, and the pong reply land here now.
 message ServerMessage {
   oneof body {
     Snapshot snapshot = 1;
     Welcome welcome = 2;
     Join join = 3;
     Leave leave = 4;
+    Pong pong = 5;
   }
 }

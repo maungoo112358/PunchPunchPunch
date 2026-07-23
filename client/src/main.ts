@@ -18,6 +18,7 @@ import { TICK_DT, MAX_CATCHUP } from "./systems/sim.js";
 import { createCameraFollow } from "./systems/cameraFollow.js";
 import { createSunFollow } from "./systems/sunFollow.js";
 import { createSession } from "./net/session.js";
+import { createTimeSync } from "./net/timeSync.js";
 import { createWorldSync } from "./systems/worldSync.js";
 import { COLORS } from "./config/palette.js";
 import type { PropEditor } from "./systems/propEditor.js";
@@ -89,12 +90,25 @@ if (import.meta.env.DEV) {
 const input = createInput();
 const cameraFollow = createCameraFollow(camera, character, input, planet);
 
-// The line to the server. Input goes up every tick; the welcome, joins, leaves and snapshots come down,
-// and worldSync writes them into the same player map worldView draws, so a remote player shows up as a
-// real character and vanishes when they leave. Your own avatar still moves by local prediction, and the
-// server's copy of you is skipped until reconciliation at step 13.
-const worldSync = createWorldSync(world, spawn);
-const session = createSession(import.meta.env.VITE_SERVER_URL, worldSync);
+// The line to the server. Input goes up every tick; the welcome, joins, leaves, snapshots and pongs come
+// down. timeSync lines our clock up with the server's from the pongs, worldSync buffers the snapshots and
+// draws remotes a slice in the past so they glide. Your own avatar still moves by local prediction, and
+// the server's copy of you is skipped until reconciliation at step 13.
+const timeSync = createTimeSync();
+const worldSync = createWorldSync(world, planet, spawn);
+const session = createSession(import.meta.env.VITE_SERVER_URL, {
+  onWelcome: worldSync.onWelcome,
+  onJoin: worldSync.onJoin,
+  onLeave: worldSync.onLeave,
+  onSnapshot: worldSync.onSnapshot,
+  onPong: timeSync.onPong,
+});
+
+// A clock probe once a second. The first pong sets the offset that lets remotes be drawn in the past; the
+// rest keep it steady and feed the round-trip readout.
+window.setInterval(() => {
+  if (session.status === "open") session.sendPing(performance.now());
+}, 1000);
 
 const controller = createPlayerController(localPlayer, input, cameraFollow, planet, path, session.sendInput);
 const sunFollow = createSunFollow(sun, character);
@@ -126,6 +140,7 @@ if (import.meta.env.DEV) {
         // from the latest snapshot. Move in another browser and watch that player's srv line change here.
         net: session.status,
         "my id": worldSync.myId ?? "-",
+        rtt: `${timeSync.rttMs.toFixed(0)}ms`,
         "server tick": worldSync.serverTick,
       };
       return rows;
@@ -187,6 +202,7 @@ renderer.setAnimationLoop(() => {
     }
     // Leftover time as a fraction of a tick: how far past the last tick the picture should be.
     const alpha = accumulator / TICK_DT;
+    worldSync.update(dt); // advance the playback clock and blend remotes into place before anything draws
     for (const r of drawn) r.render(alpha);
     for (const u of perFrame) u.update?.(dt);
   }
