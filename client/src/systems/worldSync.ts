@@ -29,9 +29,20 @@ const CLOCK_CATCHUP = 0.1; // how hard the playback clock eases back toward its 
 type Pose = { x: number; y: number; z: number; fx: number; fy: number; fz: number; anim: string };
 type Frame = { t: number; byId: Map<string, Pose> }; // t is server time in ms
 
+// The server's truth about your own player, pulled out of a snapshot for the controller to reconcile
+// against: where it says you are, and ack, the last input of yours it had processed when it said so.
+export type SelfCorrection = {
+  tick: number;
+  ack: number;
+  x: number; y: number; z: number;
+  fx: number; fy: number; fz: number;
+  anim: string;
+};
+
 export function createWorldSync(world: World, planet: Planet, spawn: THREE.Vector3) {
   let myId: string | null = null;
   let lastTick = 0;
+  let self: SelfCorrection | null = null; // the server's latest word on our own player
   let renderClock = 0; // the playback clock, in server-time ms; trails the newest snapshot
   let clockStarted = false;
   const remotes = new Set<string>();
@@ -67,6 +78,10 @@ export function createWorldSync(world: World, planet: Planet, spawn: THREE.Vecto
     get serverTick() {
       return lastTick;
     },
+    // The controller reads this each tick to reconcile the local prediction against the server.
+    get selfCorrection() {
+      return self;
+    },
 
     onWelcome(welcome: Welcome) {
       // you is our own id, character and name; apply it to the local player, which is drawn under LOCAL_ID
@@ -94,7 +109,18 @@ export function createWorldSync(world: World, planet: Planet, spawn: THREE.Vecto
       lastTick = snapshot.tick;
       const byId = new Map<string, Pose>();
       for (const p of snapshot.players) {
-        if (p.id === myId || !p.position || !p.forward) continue;
+        if (!p.position || !p.forward) continue;
+        if (p.id === myId) {
+          // Our own player: hand it to the controller to reconcile, not into the remote buffer, because
+          // our avatar is drawn from prediction. ack rides the snapshot, not the per-player row.
+          self = {
+            tick: snapshot.tick, ack: snapshot.ack,
+            x: p.position.x, y: p.position.y, z: p.position.z,
+            fx: p.forward.x, fy: p.forward.y, fz: p.forward.z,
+            anim: p.anim,
+          };
+          continue;
+        }
         byId.set(p.id, {
           x: p.position.x, y: p.position.y, z: p.position.z,
           fx: p.forward.x, fy: p.forward.y, fz: p.forward.z,

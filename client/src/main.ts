@@ -115,7 +115,17 @@ window.setInterval(() => {
   if (session.status === "open") session.sendPing(performance.now());
 }, 1000);
 
-const controller = createPlayerController(localPlayer, input, cameraFollow, planet, path, session.sendInput);
+const controller = createPlayerController(
+  localPlayer, input, cameraFollow, planet, path, session.sendInput,
+  () => worldSync.selfCorrection, // the server's latest word on our own player, to reconcile against
+);
+
+// Prediction toggle, kept out of the dev-only block below so it ships in the production build: its whole
+// point only shows against the real latency of the live server. Press O; the console says on or off. Step
+// 14 gives this proper on-screen UI next to the latency slider.
+window.addEventListener("keydown", (e) => {
+  if (e.code === "KeyO") controller.togglePrediction();
+});
 const sunFollow = createSunFollow(sun, character);
 
 // Dev-only pokes at the two new layers, stripped from release builds.
@@ -146,6 +156,7 @@ if (import.meta.env.DEV) {
         net: session.status,
         "my id": worldSync.myId ?? "-",
         rtt: `${timeSync.rttMs.toFixed(0)}ms`,
+        prediction: controller.enabled ? "on" : "off (press O)",
         "server tick": worldSync.serverTick,
       };
       return rows;
