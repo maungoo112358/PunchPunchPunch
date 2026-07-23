@@ -16,6 +16,12 @@ const MAX_RETRY_MS = 10_000;
 
 export type ConnectionStatus = "connecting" | "open" | "closed";
 
+// Bytes in a frame, for the bytes-per-second readout. A JSON text frame is ASCII so its length is its
+// byte count closely enough; a binary frame carries its exact length.
+function frameSize(frame: Frame): number {
+  return typeof frame === "string" ? frame.length : frame.byteLength;
+}
+
 // onFrame is called for every message that arrives, already unwrapped to a string (a text frame, JSON)
 // or bytes (a binary frame, protobuf), which is exactly what the codec reads.
 export function createConnection(url: string, onFrame?: (frame: Frame) => void) {
@@ -26,6 +32,12 @@ export function createConnection(url: string, onFrame?: (frame: Frame) => void) 
   // Flips to false when we close on purpose, which is how a deliberate hang-up is told apart from a
   // dropped line. Without it, closing the socket would immediately reopen it.
   let wanted = true;
+
+  // Fake latency for the demo: an added round trip, half held on the way out and half on the way in, so
+  // the slider reads as total added RTT. And running byte totals, which the readout turns into a rate.
+  let latencyMs = 0;
+  let bytesUp = 0;
+  let bytesDown = 0;
 
   function dial() {
     status = "connecting";
@@ -44,7 +56,10 @@ export function createConnection(url: string, onFrame?: (frame: Frame) => void) 
 
     socket.onmessage = (e) => {
       const frame: Frame = typeof e.data === "string" ? e.data : new Uint8Array(e.data as ArrayBuffer);
-      onFrame?.(frame);
+      bytesDown += frameSize(frame);
+      const half = latencyMs / 2;
+      if (half > 0) window.setTimeout(() => onFrame?.(frame), half);
+      else onFrame?.(frame);
     };
 
     // The browser fires error and then close for the same failure, and error carries no detail on
@@ -68,11 +83,28 @@ export function createConnection(url: string, onFrame?: (frame: Frame) => void) 
     get status() {
       return status;
     },
+    get bytesUp() {
+      return bytesUp;
+    },
+    get bytesDown() {
+      return bytesDown;
+    },
+
+    // Added round-trip latency in ms, for the demo slider. 0 turns it off.
+    setLatency(ms: number) {
+      latencyMs = Math.max(0, ms);
+    },
 
     // Send a frame if the line is up, otherwise drop it. Dropping is fine: input is sent every tick, so
-    // a frame lost while reconnecting is replaced a thirtieth of a second later.
+    // a frame lost while reconnecting is replaced a thirtieth of a second later. Held half the fake RTT
+    // on the way out, matching the delay on the way in.
     send(frame: Frame) {
-      if (socket && socket.readyState === WebSocket.OPEN) socket.send(frame);
+      const s = socket;
+      if (!s || s.readyState !== WebSocket.OPEN) return;
+      bytesUp += frameSize(frame);
+      const half = latencyMs / 2;
+      if (half > 0) window.setTimeout(() => { if (s.readyState === WebSocket.OPEN) s.send(frame); }, half);
+      else s.send(frame);
     },
 
     // Hang up and stay hung up.

@@ -3,6 +3,7 @@ package main
 import (
 	"strconv"
 	"sync"
+	"sync/atomic"
 
 	"punchpunchpunch/server/sim"
 	"punchpunchpunch/server/wire"
@@ -44,9 +45,11 @@ type Client struct {
 	// goroutine offers, the tick goroutine drains, and the channel handles the handoff safely.
 	inbox chan sim.Input
 
-	// How this connection wants its snapshots encoded. Step 9 uses JSON for everyone so the frames read
-	// plainly in devtools and the log; step 14 sets this per connection from the socket URL.
-	enc wire.Encoding
+	// How this connection wants its snapshots encoded. It follows whatever the client last sent: a text
+	// frame is JSON, a binary frame is protobuf, so the client flips its own encoding and the server
+	// replies in kind with no reconnect. Atomic because the read goroutine sets it while the tick loop
+	// reads it. 0 is protobuf, 1 is json, matching wire.Encoding.
+	enc atomic.Int32
 
 	// Drawn from the pool when the socket opens, put back when it closes. character is a key the client
 	// maps to a model; name floats over the head. They never change while connected, so they ride the
@@ -54,6 +57,9 @@ type Client struct {
 	character string
 	name      string
 }
+
+func (c *Client) encoding() wire.Encoding    { return wire.Encoding(c.enc.Load()) }
+func (c *Client) setEncoding(e wire.Encoding) { c.enc.Store(int32(e)) }
 
 // offer queues an input for the next tick, dropping it if the inbox is already full. Non-blocking, so a
 // flooding client can never stall the goroutine reading its socket. One dropped intent is one still
@@ -99,10 +105,10 @@ func (h *Hub) Add(conn *websocket.Conn, addr string, spawn sim.Vec3, character, 
 		conn:      conn,
 		state:     sim.NewPlayerState(spawn, sim.Vec3{X: 0, Y: 0, Z: 1}),
 		inbox:     make(chan sim.Input, inboxSize),
-		enc:       wire.JSON,
 		character: character,
 		name:      name,
 	}
+	c.setEncoding(wire.JSON) // start in JSON, the client's default, until it sends a frame that says otherwise
 	h.clients[c.ID] = c
 	return c
 }

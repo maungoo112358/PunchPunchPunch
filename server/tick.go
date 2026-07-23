@@ -148,7 +148,7 @@ func (s *server) sendMsg(ctx context.Context, c *Client, msg *pb.ServerMessage) 
 	if c == nil {
 		return
 	}
-	data, text, err := wire.Encode(msg, c.enc)
+	data, text, err := wire.Encode(msg, c.encoding())
 	if err != nil {
 		log.Printf("encode for %s: %v", c.ID, err)
 		return

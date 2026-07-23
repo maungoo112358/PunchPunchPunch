@@ -8,10 +8,6 @@ import type { MoveInput } from "../systems/sim.js";
 // The game's own view of the socket: send your input, and be told what the server says. It owns the two
 // message schemas and the encoding, so the rest of the game passes plain records and reads plain
 // messages, never touching protobuf or JSON.
-//
-// Step 9 uses JSON on the wire so every frame reads plainly in devtools and the server log. Flipping to
-// protobuf is the one line below; the per-connection choice from the socket URL comes at step 14.
-const ENCODING: Encoding = "json";
 
 // The four things the server can tell us. Whoever creates the session hands these in, and each incoming
 // frame is decoded once here and routed to the matching one.
@@ -24,6 +20,10 @@ export type ServerHandlers = {
 };
 
 export function createSession(url: string, handlers: ServerHandlers) {
+  // The wire encoding. JSON by default so frames read plainly in devtools and the server log; the demo
+  // flips this live and the server follows, because it replies in whatever kind of frame we last sent.
+  let encoding: Encoding = "json";
+
   const connection = createConnection(url, (frame) => {
     const message = decode(ServerMessageSchema, frame);
     switch (message.body.case) {
@@ -49,6 +49,25 @@ export function createSession(url: string, handlers: ServerHandlers) {
     get status() {
       return connection.status;
     },
+    get encoding() {
+      return encoding;
+    },
+    get bytesUp() {
+      return connection.bytesUp;
+    },
+    get bytesDown() {
+      return connection.bytesDown;
+    },
+
+    // Flip the wire encoding live. The next frame goes out in it, and the server replies in kind.
+    setEncoding(e: Encoding) {
+      encoding = e;
+    },
+
+    // Added round-trip latency in ms, for the demo slider.
+    setLatency(ms: number) {
+      connection.setLatency(ms);
+    },
 
     // Encode one tick's input as a ClientMessage and send it up.
     sendInput(input: MoveInput) {
@@ -58,13 +77,13 @@ export function createSession(url: string, handlers: ServerHandlers) {
           value: { seq: input.seq, dir: { x: input.dir.x, y: input.dir.y, z: input.dir.z } },
         },
       });
-      connection.send(encode(ClientMessageSchema, message, ENCODING));
+      connection.send(encode(ClientMessageSchema, message, encoding));
     },
 
     // Send a clock probe stamped with the current time, to be echoed back in a pong.
     sendPing(clientTime: number) {
       const message = create(ClientMessageSchema, { body: { case: "ping", value: { clientTime } } });
-      connection.send(encode(ClientMessageSchema, message, ENCODING));
+      connection.send(encode(ClientMessageSchema, message, encoding));
     },
 
     close() {

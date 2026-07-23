@@ -31,6 +31,9 @@ const MAX_PENDING = 90;
 const SMOOTH_DECAY = 0.85;
 const SNAP_DISTANCE = 3;
 
+// A correction smaller than this is floating-point noise, not a real disagreement, so it does not count.
+const CORRECTION_EPS = 0.001;
+
 export function createPlayerController(
   player: WorldPlayer,
   input: IntentSource,
@@ -48,6 +51,8 @@ export function createPlayerController(
   const renderError = new THREE.Vector3(); // rendered = predicted + this, easing back to zero
   let enabled = true;
   let lastReconciledTick = -1;
+  let lastError = 0; // how far the last correction moved us, in world units, for the readout
+  let corrections = 0; // count of corrections that were real, not noise, for the corrections/sec readout
 
   const before = new THREE.Vector3(); // scratch, where we were predicting before a reconcile
 
@@ -63,6 +68,10 @@ export function createPlayerController(
     predicted.anim = c.anim;
     for (const inp of pending) stepPlayer(predicted, inp, planet, path, TICK_DT);
 
+    // How far the prediction was from the server's truth: the headline netcode number, normally near zero.
+    lastError = before.distanceTo(predicted.position);
+    if (lastError > CORRECTION_EPS) corrections++;
+
     // Fold the jump into the error so the drawn position does not move this frame; it eases over the next.
     renderError.add(before).sub(predicted.position);
     if (renderError.length() > SNAP_DISTANCE) renderError.set(0, 0, 0); // too far to slide, just snap
@@ -72,6 +81,12 @@ export function createPlayerController(
     pending,
     get enabled() {
       return enabled;
+    },
+    get predictionError() {
+      return lastError;
+    },
+    get corrections() {
+      return corrections;
     },
     togglePrediction() {
       enabled = !enabled;

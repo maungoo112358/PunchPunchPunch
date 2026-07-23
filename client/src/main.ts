@@ -22,9 +22,9 @@ import { createTimeSync } from "./net/timeSync.js";
 import { createWorldSync } from "./systems/worldSync.js";
 import { preloadModels } from "./entities/Character.js";
 import { ALL_MODELS } from "./config/characters.js";
+import { createNetHud } from "./systems/netHud.js";
 import { COLORS } from "./config/palette.js";
 import type { PropEditor } from "./systems/propEditor.js";
-import type { DebugOverlay } from "./systems/debugOverlay.js";
 
 console.log("PunchPunchPunch booting...");
 
@@ -120,50 +120,47 @@ const controller = createPlayerController(
   () => worldSync.selfCorrection, // the server's latest word on our own player, to reconcile against
 );
 
-// Prediction toggle, kept out of the dev-only block below so it ships in the production build: its whole
-// point only shows against the real latency of the live server. Press O; the console says on or off. Step
-// 14 gives this proper on-screen UI next to the latency slider.
+// The netcode HUD. Shipped, not dev-only, because the whole point of prediction and the latency slider
+// only shows against the real round trip of the live server. Toggle the panel with I; O also flips
+// prediction. A once-a-second sampler turns the running byte and correction counters into rates.
+let bytesUpRate = 0, bytesDownRate = 0, corrRate = 0;
+let lastBytesUp = 0, lastBytesDown = 0, lastCorr = 0;
+window.setInterval(() => {
+  bytesUpRate = session.bytesUp - lastBytesUp; lastBytesUp = session.bytesUp;
+  bytesDownRate = session.bytesDown - lastBytesDown; lastBytesDown = session.bytesDown;
+  corrRate = controller.corrections - lastCorr; lastCorr = controller.corrections;
+}, 1000);
+
+const hud = createNetHud({
+  rows: () => ({
+    rtt: `${timeSync.rttMs.toFixed(0)}ms`,
+    tick: worldSync.serverTick,
+    "pred err": controller.predictionError.toFixed(3),
+    "corr/s": corrRate,
+    "in buf": controller.pending.length,
+    "up B/s": bytesUpRate,
+    "dn B/s": bytesDownRate,
+    id: worldSync.myId ?? "-",
+  }),
+  onLatency: (ms) => session.setLatency(ms),
+  onTogglePrediction: () => controller.togglePrediction(),
+  predictionOn: () => controller.enabled,
+  onToggleEncoding: () => session.setEncoding(session.encoding === "json" ? "protobuf" : "json"),
+  encoding: () => session.encoding,
+});
 window.addEventListener("keydown", (e) => {
+  if (e.code === "KeyI") hud.toggle();
   if (e.code === "KeyO") controller.togglePrediction();
 });
+
 const sunFollow = createSunFollow(sun, character);
 
-// Dev-only pokes at the two new layers, stripped from release builds.
-// I shows a panel of live numbers in the corner: the input we are building this tick and where the sim
-// has put you. Press it again to hide.
-// P puts a second player in the map a few paces away, and takes them out again. Nothing there touches a
-// model or the scene, it only adds and removes a map entry, and a whole character appears and disappears
-// because the view draws the map. That is exactly what a snapshot off the network will do later.
-let overlay: DebugOverlay | null = null;
+// Dev-only: P puts a second player in the map a few paces away and takes them out again. It only adds and
+// removes a map entry, and a whole character appears and vanishes because the view draws the map, which is
+// exactly what a snapshot off the network does. Stripped from release builds.
 if (import.meta.env.DEV) {
   const TEST_ID = "test";
-  import("./systems/debugOverlay.js").then(({ createDebugOverlay }) => {
-    overlay = createDebugOverlay(() => {
-      const latest = controller.pending[controller.pending.length - 1];
-      const p = localPlayer.state.position;
-      const f = localPlayer.state.forward;
-      const rows: Record<string, string | number> = {
-        "input seq": latest ? latest.seq : "-",
-        "input dir": latest ? `${latest.dir.x.toFixed(2)}, ${latest.dir.y.toFixed(2)}, ${latest.dir.z.toFixed(2)}` : "-",
-        speed: latest ? latest.dir.length().toFixed(2) : "-",
-        pending: controller.pending.length,
-        anim: localPlayer.state.anim,
-        position: `${p.x.toFixed(1)}, ${p.y.toFixed(1)}, ${p.z.toFixed(1)}`,
-        facing: `${f.x.toFixed(2)}, ${f.y.toFixed(2)}, ${f.z.toFixed(2)}`,
-        players: world.players.size,
-        // The server side of the same numbers. srv lines are what the authoritative sim says, straight
-        // from the latest snapshot. Move in another browser and watch that player's srv line change here.
-        net: session.status,
-        "my id": worldSync.myId ?? "-",
-        rtt: `${timeSync.rttMs.toFixed(0)}ms`,
-        prediction: controller.enabled ? "on" : "off (press O)",
-        "server tick": worldSync.serverTick,
-      };
-      return rows;
-    });
-  });
   window.addEventListener("keydown", (e) => {
-    if (e.code === "KeyI") overlay?.toggle();
     if (e.code === "KeyP") {
       if (world.players.has(TEST_ID)) {
         world.remove(TEST_ID);
@@ -222,7 +219,7 @@ renderer.setAnimationLoop(() => {
     for (const r of drawn) r.render(alpha);
     for (const u of perFrame) u.update?.(dt);
   }
-  overlay?.update(dt); // dev readout, and null until its module finishes loading
+  hud.update(dt); // the netcode readout; counts frames even while hidden so fps is right when opened
   renderer.render(scene, camera);
 });
 

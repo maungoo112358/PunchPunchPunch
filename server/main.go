@@ -209,10 +209,17 @@ func (s *server) handleWS(w http.ResponseWriter, r *http.Request) {
 		// Decode the frame. A text frame is JSON and a binary frame is protobuf, which is all Decode needs
 		// to pick the right reader. An input goes to the tick loop; a ping is answered here and now, from
 		// this goroutine, so the round trip the client measures is not padded by waiting for the next tick.
+		text := kind == websocket.MessageText
 		var msg pb.ClientMessage
-		if err := wire.Decode(&msg, data, kind == websocket.MessageText); err != nil {
+		if err := wire.Decode(&msg, data, text); err != nil {
 			log.Printf("bad   %s message: %v", client.ID, err)
 			continue
+		}
+		// Reply in whatever the client just spoke, so flipping encoding on the client needs no handshake.
+		if text {
+			client.setEncoding(wire.JSON)
+		} else {
+			client.setEncoding(wire.Protobuf)
 		}
 		switch body := msg.Body.(type) {
 		case *pb.ClientMessage_Input:
