@@ -27,6 +27,11 @@ const (
 	// Where the client is served from during development. Vite's dev server, on your machine and on
 	// your phone over the local network.
 	defaultOrigins = "localhost:5173,127.0.0.1:5173,*.local:5173"
+	// How long a connection may go without sending anything before the server drops it. Once input
+	// streams every tick (step 9) a real player resets this constantly, so a socket that stays silent
+	// this long is an abandoned tab worth reaping. Overridable with IDLE_TIMEOUT, mostly so the test
+	// can use a tiny value.
+	defaultIdle = 30 * time.Second
 )
 
 func env(key, fallback string) string {
@@ -36,16 +41,28 @@ func env(key, fallback string) string {
 	return fallback
 }
 
+func envDuration(key string, fallback time.Duration) time.Duration {
+	if v := os.Getenv(key); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			return d
+		}
+		log.Printf("bad %s %q, using %s", key, v, fallback)
+	}
+	return fallback
+}
+
 type server struct {
 	hub     *Hub
 	origins []string
+	idle    time.Duration
 }
 
 func main() {
 	addr := env("ADDR", defaultAddr)
 	origins := strings.Split(env("ALLOWED_ORIGINS", defaultOrigins), ",")
+	idle := envDuration("IDLE_TIMEOUT", defaultIdle)
 
-	s := &server{hub: NewHub(), origins: origins}
+	s := &server{hub: NewHub(), origins: origins, idle: idle}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ws", s.handleWS)
@@ -71,7 +88,7 @@ func main() {
 	defer stop()
 
 	go func() {
-		log.Printf("listening on %s, accepting origins %v", addr, origins)
+		log.Printf("listening on %s, accepting origins %v, idle timeout %s", addr, origins, idle)
 		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Fatalf("server stopped: %v", err)
 		}
@@ -113,11 +130,26 @@ func (s *server) handleWS(w http.ResponseWriter, r *http.Request) {
 		log.Printf("drop  %s (%d connected)", client.ID, s.hub.Count())
 	}()
 
-	// Read until the client goes away. There is no protocol yet, so anything that arrives is just
-	// noted. Step 7 defines the messages and step 9 starts acting on them.
+	// Read until the client goes away. Anything that arrives is just noted for now; step 9 starts
+	// acting on it. Each read carries the idle deadline: a message ends the read and the next loop makes
+	// a fresh timeout, so the clock resets on every message. If the deadline fires first the read fails
+	// with a deadline error and we drop them.
 	for {
-		kind, data, err := conn.Read(r.Context())
+		// A zero or negative idle window turns the kick off entirely, which is what IDLE_TIMEOUT=0 on
+		// the box means. Otherwise the read carries the deadline.
+		readCtx := r.Context()
+		cancel := func() {}
+		if s.idle > 0 {
+			readCtx, cancel = context.WithTimeout(readCtx, s.idle)
+		}
+		kind, data, err := conn.Read(readCtx)
+		cancel()
 		if err != nil {
+			if errors.Is(err, context.DeadlineExceeded) {
+				log.Printf("idle  %s sent nothing for %s, dropping", client.ID, s.idle)
+				conn.Close(websocket.StatusPolicyViolation, "idle")
+				return
+			}
 			status := websocket.CloseStatus(err)
 			if status == websocket.StatusNormalClosure || status == websocket.StatusGoingAway {
 				return // they closed the tab, which is not a problem
