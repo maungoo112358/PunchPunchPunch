@@ -30,7 +30,8 @@ func TestTickLoopMovesAndBroadcasts(t *testing.T) {
 		planet:   planet,
 		path:     &path,
 		spawn:    sim.Vec3{X: 0, Y: sim.PlanetRadius, Z: 0},
-		welcomed: make(map[string]bool),
+		welcomed: make(map[string]*Client),
+		store:    newMemStore(),
 		pool:     newPool(),
 	}
 

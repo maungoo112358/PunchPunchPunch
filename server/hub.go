@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"punchpunchpunch/server/sim"
 	"punchpunchpunch/server/wire"
@@ -56,9 +57,17 @@ type Client struct {
 	// join and roster messages, not the snapshot.
 	character string
 	name      string
+
+	// The stats plug-in. accountKey is the persistence key, set only for a logged-in account and empty
+	// for a guest, so an empty key is how the tick loop knows not to load or save. joinedAt starts the
+	// clock for this session's play time, and stats is the row loaded on join and written back on leave.
+	// Only the tick loop touches joinedAt and stats, so they need no lock.
+	accountKey string
+	joinedAt   time.Time
+	stats      Stats
 }
 
-func (c *Client) encoding() wire.Encoding    { return wire.Encoding(c.enc.Load()) }
+func (c *Client) encoding() wire.Encoding     { return wire.Encoding(c.enc.Load()) }
 func (c *Client) setEncoding(e wire.Encoding) { c.enc.Store(int32(e)) }
 
 // offer queues an input for the next tick, dropping it if the inbox is already full. Non-blocking, so a

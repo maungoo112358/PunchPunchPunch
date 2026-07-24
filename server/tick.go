@@ -104,6 +104,20 @@ func (s *server) handleLeaves(ctx context.Context, current map[string]*Client) {
 		}
 	}
 	for _, id := range gone {
+		// Stats plug-in: save a logged-in account's final position and updated counters before forgetting
+		// them. It reads the Client the tick loop last stepped, from the tick loop, so there is no race
+		// with the stepping. The write is disk I/O done inline, which is fine because leaves are rare; if
+		// it ever needs to stay off the tick, copy the Stats value out and Save it on another goroutine.
+		if c := s.welcomed[id]; c != nil && c.accountKey != "" {
+			c.stats.PlaySeconds += int(time.Since(c.joinedAt).Seconds())
+			c.stats.Pos = c.state.Position
+			c.stats.Fwd = c.state.Forward
+			if err := s.store.Save(c.accountKey, c.stats); err != nil {
+				log.Printf("save  %s failed: %v", c.accountKey, err)
+			} else {
+				log.Printf("save  %s: visit #%d, %ds played total", c.accountKey, c.stats.Visits, c.stats.PlaySeconds)
+			}
+		}
 		delete(s.welcomed, id)
 		leave := &pb.ServerMessage{Body: &pb.ServerMessage_Leave{Leave: &pb.Leave{Id: id}}}
 		for other := range s.welcomed {
@@ -117,8 +131,26 @@ func (s *server) handleLeaves(ctx context.Context, current map[string]*Client) {
 // others about the newcomer, and marks it in play.
 func (s *server) handleJoins(ctx context.Context, all []*Client, current map[string]*Client) {
 	for _, c := range all {
-		if s.welcomed[c.ID] {
+		if _, ok := s.welcomed[c.ID]; ok {
 			continue
+		}
+		// Stats plug-in: a logged-in account loads its saved spot and counters on the way in, so it
+		// resumes where it left off; a first visit starts a fresh row. Guests carry no key and skip it.
+		// Position is applied to the state here and reaches the client through the first snapshot's
+		// reconciliation, not the Welcome, so the Welcome below is unchanged.
+		if c.accountKey != "" {
+			st, found := s.store.Load(c.accountKey)
+			if found {
+				c.state.Position = st.Pos
+				c.state.Forward = st.Fwd
+				log.Printf("load  %s: visit #%d incoming, %ds played, resuming at (%.1f,%.1f,%.1f)",
+					c.accountKey, st.Visits+1, st.PlaySeconds, st.Pos.X, st.Pos.Y, st.Pos.Z)
+			} else {
+				log.Printf("load  %s: first visit", c.accountKey)
+			}
+			st.Visits++
+			c.stats = st
+			c.joinedAt = time.Now()
 		}
 		// The roster is everyone welcomed so far, which excludes this newcomer since it is not in the set
 		// yet. If two join on the same tick the first is added before the second's roster is built, so the
@@ -137,7 +169,7 @@ func (s *server) handleJoins(ctx context.Context, all []*Client, current map[str
 			s.sendMsg(ctx, current[other], join)
 		}
 
-		s.welcomed[c.ID] = true
+		s.welcomed[c.ID] = c
 		log.Printf("welcome %s (%d playing)", c.ID, len(s.welcomed))
 	}
 }

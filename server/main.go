@@ -79,14 +79,19 @@ type server struct {
 	// goroutine reads it to answer a ping.
 	tickNum atomic.Uint32
 
-	// Who has been welcomed and is in play. The tick loop diffs this against the live connections each
-	// tick to find joins and leaves, so it stays the single writer to every socket. Only the tick loop
-	// touches it, so it needs no lock.
-	welcomed map[string]bool
+	// Who has been welcomed and is in play, each mapped to its Client. The tick loop diffs this against
+	// the live connections each tick to find joins and leaves, so it stays the single writer to every
+	// socket. Holding the Client, not just a flag, lets a leave still reach the player's final state to
+	// save it after the socket is already gone from the hub. Only the tick loop touches it, so no lock.
+	welcomed map[string]*Client
 
 	// The bags of characters and names a joiner draws from. Guarded by its own lock because connections
 	// draw and return concurrently.
 	pool *pool
+
+	// Where account stats are loaded and saved, the stats plug-in. Defaults to an in-memory map that
+	// forgets on exit; becomes a SQLite file when STATS_DB names one. Touched only by the tick loop.
+	store Store
 }
 
 func main() {
@@ -94,6 +99,19 @@ func main() {
 	origins := strings.Split(env("ALLOWED_ORIGINS", defaultOrigins), ",")
 	idle := envDuration("IDLE_TIMEOUT", defaultIdle)
 	tokenSecret := env("TOKEN_SECRET", defaultTokenSecret)
+
+	// The stats store. No STATS_DB means the in-memory map, which is the "plug-in removed" default and
+	// what a fresh dev run uses; a path means a SQLite file that survives restarts. A bad path is fatal
+	// on purpose, because silently forgetting to persist is worse than not starting.
+	var store Store = newMemStore()
+	if path := os.Getenv("STATS_DB"); path != "" {
+		sq, err := newSQLiteStore(path)
+		if err != nil {
+			log.Fatalf("stats db %q: %v", path, err)
+		}
+		store = sq
+		log.Printf("stats persisting to %s", path)
+	}
 
 	planet := sim.NewPlanet()
 	path := sim.NewPath(planet.Radius)
@@ -105,9 +123,11 @@ func main() {
 		planet:      planet,
 		path:        &path,
 		spawn:       sim.Vec3{X: 0, Y: planet.Radius, Z: 0}, // north pole, where up is +Y
-		welcomed:    make(map[string]bool),
+		welcomed:    make(map[string]*Client),
 		pool:        newPool(),
+		store:       store,
 	}
+	defer store.Close()
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ws", s.handleWS)
@@ -206,6 +226,11 @@ func (s *server) handleWS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	client := s.hub.Add(conn, r.RemoteAddr, s.spawn, character, name)
+	// Only a logged-in account carries a persistence key, and it is the account name. A guest leaves this
+	// empty, which is how the tick loop knows to skip loading and saving them.
+	if loggedIn {
+		client.accountKey = accountName
+	}
 	log.Printf("join  %s (%s the %s) from %s (%d connected)", client.ID, name, character, client.Addr, s.hub.Count())
 
 	defer func() {
