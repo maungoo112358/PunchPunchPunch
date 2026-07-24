@@ -251,6 +251,23 @@ function startNetworking(start: NetStart) {
     if (session.status === "open") session.sendPing(performance.now());
   }, 1000);
 
+  // Away detection. A hidden tab stays connected (the ping above keeps it alive), so glancing at another
+  // tab keeps you standing in the world for everyone. But stay hidden past AWAY_MS and we close the socket,
+  // which the server reads as an ordinary leave; coming back reopens it and rejoins, resuming your saved
+  // spot. Two minutes is long enough that a quick look away never drops you, short enough that a truly
+  // gone player clears out. A hard exit (closed tab or dead connection) is still caught quickly by the
+  // socket close or the server's idle kick; this only adds patience for the tab-switch case.
+  const AWAY_MS = 2 * 60 * 1000;
+  let awayTimer = 0;
+  document.addEventListener("visibilitychange", () => {
+    window.clearTimeout(awayTimer);
+    if (document.hidden) {
+      awayTimer = window.setTimeout(() => session.close(), AWAY_MS);
+    } else {
+      session.reopen(); // no-op unless the away timer had closed us
+    }
+  });
+
   const controller = createPlayerController(
     localPlayer, input, cameraFollow, planet, path, session.sendInput,
     () => ws.selfCorrection, // the server's latest word on our own player, to reconcile against

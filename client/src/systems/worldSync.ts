@@ -94,6 +94,13 @@ export function createWorldSync(world: World, planet: Planet, spawn: THREE.Vecto
           local.name = welcome.you.name;
         }
       }
+      // A Welcome is a fresh session, either the first connect or a reconnect after the tab was away. Start
+      // interpolation clean so snapshots from before a gap are not blended across it, and drop any remote no
+      // longer in the roster, so someone who left while we were gone does not linger as a frozen ghost.
+      buffer.length = 0;
+      clockStarted = false;
+      const roster = new Set(welcome.players.map((p) => p.id));
+      for (const id of [...remotes]) if (!roster.has(id)) removeRemote(id);
       for (const info of welcome.players) addRemote(info);
     },
 

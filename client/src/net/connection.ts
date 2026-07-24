@@ -43,6 +43,7 @@ export function createConnection(url: string, onFrame?: (frame: Frame) => void) 
     status = "connecting";
     console.log(`[net] connecting to ${url}`);
     socket = new WebSocket(url);
+    const ws = socket; // captured, so a close from a socket we have already replaced can be ignored
     // Without this a binary frame comes back as a Blob, which only reads asynchronously, and the decode
     // silently gets the wrong type. arraybuffer hands us the bytes directly. Harmless for JSON, which
     // arrives as a string either way, and needed the moment we flip to protobuf.
@@ -67,6 +68,7 @@ export function createConnection(url: string, onFrame?: (frame: Frame) => void) 
     socket.onerror = () => console.warn("[net] socket error");
 
     socket.onclose = (e) => {
+      if (socket !== ws) return; // a stale socket we already replaced; leave the live one alone
       status = "closed";
       socket = null;
       console.log(`[net] closed, code ${e.code}${e.reason ? `, ${e.reason}` : ""}`);
@@ -112,6 +114,15 @@ export function createConnection(url: string, onFrame?: (frame: Frame) => void) 
       wanted = false;
       window.clearTimeout(retryTimer);
       socket?.close(1000, "client closing");
+    },
+
+    // Dial again after a deliberate close (a tab that went away and came back). A no-op if we never hung
+    // up or are already dialling, so calling it on every return to the tab is safe.
+    reopen() {
+      if (wanted) return;
+      wanted = true;
+      retryMs = FIRST_RETRY_MS;
+      dial();
     },
   };
 }

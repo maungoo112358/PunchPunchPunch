@@ -89,6 +89,11 @@ export function createSession(url: string, handlers: ServerHandlers) {
     close() {
       connection.close();
     },
+
+    // Reconnect after a deliberate close, used when a tab that went away comes back.
+    reopen() {
+      connection.reopen();
+    },
   };
 }
 
