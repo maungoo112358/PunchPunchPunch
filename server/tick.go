@@ -7,6 +7,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"time"
 
@@ -104,11 +105,13 @@ func (s *server) handleLeaves(ctx context.Context, current map[string]*Client) {
 		}
 	}
 	for _, id := range gone {
+		c := s.welcomed[id] // the last Client we had for them, its state stepped by this same goroutine
+
 		// Stats plug-in: save a logged-in account's final position and updated counters before forgetting
 		// them. It reads the Client the tick loop last stepped, from the tick loop, so there is no race
 		// with the stepping. The write is disk I/O done inline, which is fine because leaves are rare; if
 		// it ever needs to stay off the tick, copy the Stats value out and Save it on another goroutine.
-		if c := s.welcomed[id]; c != nil && c.accountKey != "" {
+		if c != nil && c.accountKey != "" {
 			c.stats.PlaySeconds += int(time.Since(c.joinedAt).Seconds())
 			c.stats.Pos = c.state.Position
 			c.stats.Fwd = c.state.Forward
@@ -124,6 +127,9 @@ func (s *server) handleLeaves(ctx context.Context, current map[string]*Client) {
 			s.sendMsg(ctx, current[other], leave)
 		}
 		log.Printf("leave %s (%d playing)", id, len(s.welcomed))
+		if c != nil {
+			s.presence.left(c.name, fmt.Sprintf("👋 %s the %s left — %d online", c.name, c.character, len(s.welcomed)))
+		}
 	}
 }
 
@@ -171,6 +177,7 @@ func (s *server) handleJoins(ctx context.Context, all []*Client, current map[str
 
 		s.welcomed[c.ID] = c
 		log.Printf("welcome %s (%d playing)", c.ID, len(s.welcomed))
+		s.presence.joined(c.name, fmt.Sprintf("🟢 %s the %s joined — %d online", c.name, c.character, len(s.welcomed)))
 	}
 }
 

@@ -92,6 +92,14 @@ type server struct {
 	// Where account stats are loaded and saved, the stats plug-in. Defaults to an in-memory map that
 	// forgets on exit; becomes a SQLite file when STATS_DB names one. Touched only by the tick loop.
 	store Store
+
+	// Pings a Telegram chat on join and leave, the notifications plug-in. Off unless the bot token and
+	// chat id are set. Never nil, so the tick loop can call it without a guard; a disabled one no-ops.
+	notifier *telegram
+
+	// Debounces join/leave so a refresh, which is a disconnect and an instant reconnect, does not fire a
+	// notification pair. The tick loop routes join/leave through this instead of the notifier directly.
+	presence *presence
 }
 
 func main() {
@@ -113,6 +121,17 @@ func main() {
 		log.Printf("stats persisting to %s", path)
 	}
 
+	// The Telegram notifier. Off unless both env vars are set, which is the plug-in-removed default.
+	notifier := newTelegram(os.Getenv("TELEGRAM_BOT_TOKEN"), os.Getenv("TELEGRAM_CHAT_ID"))
+	if notifier.enabled {
+		log.Print("telegram notifications on")
+	} else {
+		log.Print("telegram notifications off (set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID)")
+	}
+	// Hold a leave for ten seconds before announcing it, so a refresh's disconnect and reconnect cancel
+	// out instead of spamming the chat.
+	presence := newPresence(10*time.Second, notifier.notify)
+
 	planet := sim.NewPlanet()
 	path := sim.NewPath(planet.Radius)
 	s := &server{
@@ -126,6 +145,8 @@ func main() {
 		welcomed:    make(map[string]*Client),
 		pool:        newPool(),
 		store:       store,
+		notifier:    notifier,
+		presence:    presence,
 	}
 	defer store.Close()
 
