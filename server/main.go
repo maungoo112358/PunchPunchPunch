@@ -37,6 +37,11 @@ const (
 	// this long is an abandoned tab worth reaping. Overridable with IDLE_TIMEOUT, mostly so the test
 	// can use a tiny value.
 	defaultIdle = 30 * time.Second
+	// The key that signs login tokens. The dev default lets the whole thing run out of the box; on the
+	// box TOKEN_SECRET is set to a real random string so tokens minted here cannot be forged. A token
+	// signed with one secret fails verification under another, which just drops the player back to a
+	// pool name, so rotating it logs everyone out gently rather than breaking anything.
+	defaultTokenSecret = "dev-secret-change-me"
 )
 
 func env(key, fallback string) string {
@@ -61,11 +66,15 @@ type server struct {
 	origins []string
 	idle    time.Duration
 
+	// The key that signs and verifies login tokens. Set once at boot, read on every login and every
+	// socket open. See the login plug-in in auth.go.
+	tokenSecret []byte
+
 	// The world the tick loop simulates in. planet and path are the same math the client and the golden
 	// test use; spawn is where a new player appears, the north pole, matching the client's spawn.
-	planet  sim.Planet
-	path    *sim.Path
-	spawn   sim.Vec3
+	planet sim.Planet
+	path   *sim.Path
+	spawn  sim.Vec3
 	// counts up forever, stamped on every snapshot. Atomic because the tick loop bumps it while the read
 	// goroutine reads it to answer a ping.
 	tickNum atomic.Uint32
@@ -84,22 +93,26 @@ func main() {
 	addr := env("ADDR", defaultAddr)
 	origins := strings.Split(env("ALLOWED_ORIGINS", defaultOrigins), ",")
 	idle := envDuration("IDLE_TIMEOUT", defaultIdle)
+	tokenSecret := env("TOKEN_SECRET", defaultTokenSecret)
 
 	planet := sim.NewPlanet()
 	path := sim.NewPath(planet.Radius)
 	s := &server{
-		hub:      NewHub(),
-		origins:  origins,
-		idle:     idle,
-		planet:   planet,
-		path:     &path,
-		spawn:    sim.Vec3{X: 0, Y: planet.Radius, Z: 0}, // north pole, where up is +Y
-		welcomed: make(map[string]bool),
-		pool:     newPool(),
+		hub:         NewHub(),
+		origins:     origins,
+		idle:        idle,
+		tokenSecret: []byte(tokenSecret),
+		planet:      planet,
+		path:        &path,
+		spawn:       sim.Vec3{X: 0, Y: planet.Radius, Z: 0}, // north pole, where up is +Y
+		welcomed:    make(map[string]bool),
+		pool:        newPool(),
 	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ws", s.handleWS)
+	// The login plug-in. Checks a seeded account and hands back a signed token the socket carries.
+	mux.HandleFunc("/login", s.handleLogin)
 	// Something to hit with a browser or a health check that is not a WebSocket, so "is it up" has an
 	// easy answer. The deploy in step 6 uses this to know the box is alive.
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -159,9 +172,33 @@ func (s *server) handleWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Draw a character and a name before registering. An empty character bag means the game is full, and
-	// the honest answer for a demo is to turn this connection away.
-	character, name, ok := s.pool.take()
+	// Resolve who this is, three ways, before registering. A valid login token names the player and the
+	// character still comes from the pool. A guest resume, char and name in the query that the tab saved
+	// on its first connect, asks for the same avatar back after a refresh. Otherwise a fresh random draw.
+	// poolName is always what gets returned to the name bag on leave; name is what floats over the head,
+	// which differs from poolName only when a login token renames them.
+	q := r.URL.Query()
+	accountName, loggedIn := verifyToken(q.Get("token"), s.tokenSecret)
+
+	var character, poolName, name string
+	var ok bool
+	switch {
+	case loggedIn:
+		character, poolName, ok = s.pool.take()
+		name = accountName
+	case q.Get("char") != "":
+		character, poolName, ok = s.pool.takeSpecific(q.Get("char"), q.Get("name"))
+		if !ok { // their old character was taken in the gap, so give them a fresh one instead
+			character, poolName, ok = s.pool.take()
+		}
+		name = poolName
+	default:
+		character, poolName, ok = s.pool.take()
+		name = poolName
+	}
+
+	// An empty character bag means the game is full, and the honest answer for a demo is to turn the
+	// connection away.
 	if !ok {
 		log.Printf("full  refused %s, no character free", r.RemoteAddr)
 		conn.Close(websocket.StatusTryAgainLater, "server full")
@@ -173,7 +210,7 @@ func (s *server) handleWS(w http.ResponseWriter, r *http.Request) {
 
 	defer func() {
 		s.hub.Remove(client.ID)
-		s.pool.give(character, name)
+		s.pool.give(character, poolName)
 		conn.CloseNow()
 		log.Printf("drop  %s (%d connected)", client.ID, s.hub.Count())
 	}()

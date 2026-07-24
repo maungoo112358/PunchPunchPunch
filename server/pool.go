@@ -53,6 +53,36 @@ func (p *pool) take() (character, name string, ok bool) {
 	return character, name, true
 }
 
+// takeSpecific tries to draw one particular character back out of the bag, for a guest resuming after a
+// refresh who wants the same avatar they had a moment ago. ok is false when that character is not free
+// right now, which happens if someone else drew it in the blink between the old socket closing and the
+// new one opening; the caller then falls back to a normal random take. The name is only a label, so it
+// is pulled from the name bag when still there and kept as given either way. Under that same rare race a
+// name can end up repeated, which is cosmetic and only touches guests.
+func (p *pool) takeSpecific(character, name string) (drawnCharacter, drawnName string, ok bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	idx := indexOf(p.characters, character)
+	if idx < 0 {
+		return "", "", false
+	}
+	p.characters = append(p.characters[:idx], p.characters[idx+1:]...)
+	if nidx := indexOf(p.names, name); nidx >= 0 {
+		p.names = append(p.names[:nidx], p.names[nidx+1:]...)
+	}
+	return character, name, true
+}
+
+func indexOf(list []string, want string) int {
+	for i, s := range list {
+		if s == want {
+			return i
+		}
+	}
+	return -1
+}
+
 // give returns a character and a name to their bags when a player leaves, so the next joiner can draw
 // them again. Empty strings are ignored, which covers a connection that was turned away before it drew.
 func (p *pool) give(character, name string) {

@@ -20,9 +20,12 @@ import { createSunFollow } from "./systems/sunFollow.js";
 import { createSession } from "./net/session.js";
 import { createTimeSync } from "./net/timeSync.js";
 import { createWorldSync } from "./systems/worldSync.js";
+import type { WorldSync } from "./systems/worldSync.js";
 import { preloadModels } from "./entities/Character.js";
 import { ALL_MODELS } from "./config/characters.js";
 import { createNetHud } from "./systems/netHud.js";
+import type { NetHudHandle } from "./systems/netHud.js";
+import { showLoginOverlay, restoreLoginToken, restoreGuest, saveGuest } from "./systems/loginOverlay.js";
 import { COLORS } from "./config/palette.js";
 import type { PropEditor } from "./systems/propEditor.js";
 
@@ -95,63 +98,11 @@ if (import.meta.env.DEV) {
 const input = createInput();
 const cameraFollow = createCameraFollow(camera, character, input, planet);
 
-// The line to the server. Input goes up every tick; the welcome, joins, leaves, snapshots and pongs come
-// down. timeSync lines our clock up with the server's from the pongs, worldSync buffers the snapshots and
-// draws remotes a slice in the past so they glide. Your own avatar still moves by local prediction, and
-// the server's copy of you is skipped until reconciliation at step 13.
-const timeSync = createTimeSync();
-const worldSync = createWorldSync(world, planet, spawn);
-const session = createSession(import.meta.env.VITE_SERVER_URL, {
-  onWelcome: worldSync.onWelcome,
-  onJoin: worldSync.onJoin,
-  onLeave: worldSync.onLeave,
-  onSnapshot: worldSync.onSnapshot,
-  onPong: timeSync.onPong,
-});
-
-// A clock probe once a second. The first pong sets the offset that lets remotes be drawn in the past; the
-// rest keep it steady and feed the round-trip readout.
-window.setInterval(() => {
-  if (session.status === "open") session.sendPing(performance.now());
-}, 1000);
-
-const controller = createPlayerController(
-  localPlayer, input, cameraFollow, planet, path, session.sendInput,
-  () => worldSync.selfCorrection, // the server's latest word on our own player, to reconcile against
-);
-
-// The netcode HUD. Shipped, not dev-only, because the whole point of prediction and the latency slider
-// only shows against the real round trip of the live server. Toggle the panel with I; O also flips
-// prediction. A once-a-second sampler turns the running byte and correction counters into rates.
-let bytesUpRate = 0, bytesDownRate = 0, corrRate = 0;
-let lastBytesUp = 0, lastBytesDown = 0, lastCorr = 0;
-window.setInterval(() => {
-  bytesUpRate = session.bytesUp - lastBytesUp; lastBytesUp = session.bytesUp;
-  bytesDownRate = session.bytesDown - lastBytesDown; lastBytesDown = session.bytesDown;
-  corrRate = controller.corrections - lastCorr; lastCorr = controller.corrections;
-}, 1000);
-
-const hud = createNetHud({
-  rows: () => ({
-    rtt: `${timeSync.rttMs.toFixed(0)}ms`,
-    tick: worldSync.serverTick,
-    "pred err": controller.predictionError.toFixed(3),
-    "corr/s": corrRate,
-    "in buf": controller.pending.length,
-    "up B/s": bytesUpRate,
-    "dn B/s": bytesDownRate,
-    id: worldSync.myId ?? "-",
-  }),
-  onLatency: (ms) => session.setLatency(ms),
-  onTogglePrediction: () => controller.togglePrediction(),
-  predictionOn: () => controller.enabled,
-  onToggleEncoding: () => session.setEncoding(session.encoding === "json" ? "protobuf" : "json"),
-  encoding: () => session.encoding,
-});
-window.addEventListener("keydown", (e) => {
-  if (e.code === "KeyI") hud.toggle();
-  if (e.code === "KeyO") controller.togglePrediction();
-});
+// The net layer is built after the login gate resolves, down in startNetworking, not at boot. That lets
+// the world render behind the login overlay. Until a token (or a guest's none) comes back, these stay
+// null and the render loop simply skips them, and the controller has not yet joined the sim list.
+let worldSync: WorldSync | null = null;
+let hud: NetHudHandle | null = null;
 
 const sunFollow = createSunFollow(sun, character);
 
@@ -185,8 +136,9 @@ type Updatable = { update(dt: number): void };
 type Renderable = { render(alpha: number): void };
 
 // Gameplay. Steps by TICK_DT, never by the frame's own time. World goes first: it files everyone's
-// current state away as "where they were" before the controller overwrites it.
-const simulated: Updatable[] = [world, controller];
+// current state away as "where they were" before the controller overwrites it. The controller is pushed
+// on once networking starts, so before login this list is just world filing away an empty map.
+const simulated: Updatable[] = [world];
 
 // Presentation. The draw pass goes first so the models are in place before the camera and the shadow
 // follow them.
@@ -215,13 +167,130 @@ renderer.setAnimationLoop(() => {
     }
     // Leftover time as a fraction of a tick: how far past the last tick the picture should be.
     const alpha = accumulator / TICK_DT;
-    worldSync.update(dt); // advance the playback clock and blend remotes into place before anything draws
+    worldSync?.update(dt); // advance the playback clock and blend remotes into place before anything draws
     for (const r of drawn) r.render(alpha);
     for (const u of perFrame) u.update?.(dt);
   }
-  hud.update(dt); // the netcode readout; counts frames even while hidden so fps is right when opened
+  hud?.update(dt); // the netcode readout; counts frames even while hidden so fps is right when opened
   renderer.render(scene, camera);
 });
+
+// --- Login gate, then networking ---
+// The render loop above is already running, so the world is on screen. Now decide how to connect. A
+// remembered login skips straight in for its 24h. A guest remembered in this tab resumes the same avatar
+// after a refresh. Only a genuinely new arrival sees the overlay, and its choice, a login or a fresh
+// guest, starts the net layer.
+const serverUrl = import.meta.env.VITE_SERVER_URL;
+// The login endpoint sits beside the socket on the same host: ws(s):// becomes http(s):// and the /ws
+// path becomes /login. Derived so there is one server URL to configure, not two that can drift apart.
+const loginUrl = serverUrl.replace(/^ws(s?):\/\//, "http$1://").replace(/\/ws$/, "/login");
+
+// The three ways a session starts. Login carries a token; guest may carry a resume (same avatar back) or
+// nothing (a fresh random one). worldView never sees the difference; this only shapes the socket URL and
+// whether the assigned avatar gets saved for the next refresh.
+type NetStart =
+  | { kind: "login"; token: string }
+  | { kind: "guest"; resume?: { character: string; name: string } };
+
+const savedToken = restoreLoginToken();
+const savedGuest = restoreGuest();
+if (savedToken) {
+  startNetworking({ kind: "login", token: savedToken });
+} else if (savedGuest) {
+  startNetworking({ kind: "guest", resume: savedGuest });
+} else {
+  showLoginOverlay(loginUrl).then(({ token }) =>
+    startNetworking(token ? { kind: "login", token } : { kind: "guest" }),
+  );
+}
+
+// Everything that talks to the server, built once the login gate settles. This is the whole of what
+// login moved later: the scene and loop start at boot, this waits for a name.
+function startNetworking(start: NetStart) {
+  // timeSync lines our clock up with the server's from the pongs; worldSync buffers snapshots and draws
+  // remotes a slice in the past so they glide. Your own avatar moves by local prediction, and the
+  // server's copy of you is reconciled against in the controller.
+  const timeSync = createTimeSync();
+  const ws = createWorldSync(world, planet, spawn);
+  worldSync = ws; // the render loop reads this to advance playback and blend remotes
+
+  // What rides the socket URL, and why it is the URL and not a cookie: the page and the server are
+  // different sites under split hosting, where browsers block cross-site cookies by default. A login
+  // sends its token; a resuming guest asks for its old character and name back; a fresh guest sends
+  // nothing and the server draws them at random.
+  const params = new URLSearchParams();
+  if (start.kind === "login") {
+    params.set("token", start.token);
+  } else if (start.resume) {
+    params.set("char", start.resume.character);
+    params.set("name", start.resume.name);
+  }
+  const query = params.toString();
+  const socketUrl = query ? `${serverUrl}?${query}` : serverUrl;
+
+  // A guest remembers whatever avatar the server settles on, so the next refresh in this tab resumes it.
+  // Saved on Welcome because that is when the server's choice arrives, and it covers both a fresh draw
+  // and a resume that had to fall back to a different character. A login does not save; its token is the
+  // memory. The rest of the world layer is untouched, which is why onJoin and the others pass straight
+  // through.
+  const isGuest = start.kind === "guest";
+  const session = createSession(socketUrl, {
+    onWelcome: (welcome) => {
+      if (isGuest && welcome.you) saveGuest(welcome.you.character, welcome.you.name);
+      ws.onWelcome(welcome);
+    },
+    onJoin: ws.onJoin,
+    onLeave: ws.onLeave,
+    onSnapshot: ws.onSnapshot,
+    onPong: timeSync.onPong,
+  });
+
+  // A clock probe once a second. The first pong sets the offset that lets remotes be drawn in the past;
+  // the rest keep it steady and feed the round-trip readout.
+  window.setInterval(() => {
+    if (session.status === "open") session.sendPing(performance.now());
+  }, 1000);
+
+  const controller = createPlayerController(
+    localPlayer, input, cameraFollow, planet, path, session.sendInput,
+    () => ws.selfCorrection, // the server's latest word on our own player, to reconcile against
+  );
+  simulated.push(controller); // from now it steps every tick alongside world
+
+  // The netcode HUD. Shipped, not dev-only, because the whole point of prediction and the latency slider
+  // only shows against the real round trip of the live server. Toggle the panel with I; O also flips
+  // prediction. A once-a-second sampler turns the running byte and correction counters into rates.
+  let bytesUpRate = 0, bytesDownRate = 0, corrRate = 0;
+  let lastBytesUp = 0, lastBytesDown = 0, lastCorr = 0;
+  window.setInterval(() => {
+    bytesUpRate = session.bytesUp - lastBytesUp; lastBytesUp = session.bytesUp;
+    bytesDownRate = session.bytesDown - lastBytesDown; lastBytesDown = session.bytesDown;
+    corrRate = controller.corrections - lastCorr; lastCorr = controller.corrections;
+  }, 1000);
+
+  const h = createNetHud({
+    rows: () => ({
+      rtt: `${timeSync.rttMs.toFixed(0)}ms`,
+      tick: ws.serverTick,
+      "pred err": controller.predictionError.toFixed(3),
+      "corr/s": corrRate,
+      "in buf": controller.pending.length,
+      "up B/s": bytesUpRate,
+      "dn B/s": bytesDownRate,
+      id: ws.myId ?? "-",
+    }),
+    onLatency: (ms) => session.setLatency(ms),
+    onTogglePrediction: () => controller.togglePrediction(),
+    predictionOn: () => controller.enabled,
+    onToggleEncoding: () => session.setEncoding(session.encoding === "json" ? "protobuf" : "json"),
+    encoding: () => session.encoding,
+  });
+  hud = h; // the render loop reads this to draw the readout
+  window.addEventListener("keydown", (e) => {
+    if (e.code === "KeyI") h.toggle();
+    if (e.code === "KeyO") controller.togglePrediction();
+  });
+}
 
 // --- Resize (wiring layer holds both renderer + camera) ---
 window.addEventListener("resize", () => {
