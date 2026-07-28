@@ -21,6 +21,59 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// Which step of the handshake this is. Only the client cares; the server forwards all three the same.
+type VoiceSignal_Kind int32
+
+const (
+	VoiceSignal_KIND_UNSPECIFIED VoiceSignal_Kind = 0
+	VoiceSignal_KIND_OFFER       VoiceSignal_Kind = 1 // "here is the sound I can send you, and how to reach me"
+	VoiceSignal_KIND_ANSWER      VoiceSignal_Kind = 2 // the reply that completes the pair
+	VoiceSignal_KIND_CANDIDATE   VoiceSignal_Kind = 3 // one address this browser might be reachable at, sent as each one is found
+)
+
+// Enum value maps for VoiceSignal_Kind.
+var (
+	VoiceSignal_Kind_name = map[int32]string{
+		0: "KIND_UNSPECIFIED",
+		1: "KIND_OFFER",
+		2: "KIND_ANSWER",
+		3: "KIND_CANDIDATE",
+	}
+	VoiceSignal_Kind_value = map[string]int32{
+		"KIND_UNSPECIFIED": 0,
+		"KIND_OFFER":       1,
+		"KIND_ANSWER":      2,
+		"KIND_CANDIDATE":   3,
+	}
+)
+
+func (x VoiceSignal_Kind) Enum() *VoiceSignal_Kind {
+	p := new(VoiceSignal_Kind)
+	*p = x
+	return p
+}
+
+func (x VoiceSignal_Kind) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (VoiceSignal_Kind) Descriptor() protoreflect.EnumDescriptor {
+	return file_game_proto_enumTypes[0].Descriptor()
+}
+
+func (VoiceSignal_Kind) Type() protoreflect.EnumType {
+	return &file_game_proto_enumTypes[0]
+}
+
+func (x VoiceSignal_Kind) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use VoiceSignal_Kind.Descriptor instead.
+func (VoiceSignal_Kind) EnumDescriptor() ([]byte, []int) {
+	return file_game_proto_rawDescGZIP(), []int{6, 0}
+}
+
 // A point or direction in world space. double, not float, because the sim runs in float64 on both
 // sides and reconciliation replays through these positions, so the low bits have to survive the wire.
 type Vec3 struct {
@@ -378,14 +431,86 @@ func (x *Pong) GetServerTick() uint32 {
 	return 0
 }
 
-// Everything a client can send. A oneof so later steps add chat and the rest as new variants without
-// reshaping the socket.
+// One step of the handshake two browsers go through before they can send each other sound. The server
+// never looks inside: it reads peer, forwards the message to that player, and writes the sender's id
+// into peer on the way back out.
+//
+// So peer always means "the player at the other end of this exchange", whichever direction you are
+// holding it. Going up it is who the message is for; coming down it is who it came from. There is
+// deliberately no sender field on the way up, because the server already knows who sent it from the
+// socket it arrived on, and a client-supplied sender would just be a way to impersonate someone.
+type VoiceSignal struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Peer  string                 `protobuf:"bytes,1,opt,name=peer,proto3" json:"peer,omitempty"`
+	Kind  VoiceSignal_Kind       `protobuf:"varint,2,opt,name=kind,proto3,enum=punch.v1.VoiceSignal_Kind" json:"kind,omitempty"`
+	// Whatever the browser produced for this step, carried through untouched. Offers and answers hold an
+	// audio description, a candidate holds one address. Opaque on purpose: the wire never has to know or
+	// care what browsers put in them, which is also why this stays a string rather than a parsed shape.
+	Payload       string `protobuf:"bytes,3,opt,name=payload,proto3" json:"payload,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *VoiceSignal) Reset() {
+	*x = VoiceSignal{}
+	mi := &file_game_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *VoiceSignal) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*VoiceSignal) ProtoMessage() {}
+
+func (x *VoiceSignal) ProtoReflect() protoreflect.Message {
+	mi := &file_game_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use VoiceSignal.ProtoReflect.Descriptor instead.
+func (*VoiceSignal) Descriptor() ([]byte, []int) {
+	return file_game_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *VoiceSignal) GetPeer() string {
+	if x != nil {
+		return x.Peer
+	}
+	return ""
+}
+
+func (x *VoiceSignal) GetKind() VoiceSignal_Kind {
+	if x != nil {
+		return x.Kind
+	}
+	return VoiceSignal_KIND_UNSPECIFIED
+}
+
+func (x *VoiceSignal) GetPayload() string {
+	if x != nil {
+		return x.Payload
+	}
+	return ""
+}
+
+// Everything a client can send. A oneof, so a new kind of message becomes a new variant instead of a
+// reshaped socket.
 type ClientMessage struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Types that are valid to be assigned to Body:
 	//
 	//	*ClientMessage_Input
 	//	*ClientMessage_Ping
+	//	*ClientMessage_Voice
 	Body          isClientMessage_Body `protobuf_oneof:"body"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -393,7 +518,7 @@ type ClientMessage struct {
 
 func (x *ClientMessage) Reset() {
 	*x = ClientMessage{}
-	mi := &file_game_proto_msgTypes[6]
+	mi := &file_game_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -405,7 +530,7 @@ func (x *ClientMessage) String() string {
 func (*ClientMessage) ProtoMessage() {}
 
 func (x *ClientMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_game_proto_msgTypes[6]
+	mi := &file_game_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -418,7 +543,7 @@ func (x *ClientMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ClientMessage.ProtoReflect.Descriptor instead.
 func (*ClientMessage) Descriptor() ([]byte, []int) {
-	return file_game_proto_rawDescGZIP(), []int{6}
+	return file_game_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *ClientMessage) GetBody() isClientMessage_Body {
@@ -446,6 +571,15 @@ func (x *ClientMessage) GetPing() *Ping {
 	return nil
 }
 
+func (x *ClientMessage) GetVoice() *VoiceSignal {
+	if x != nil {
+		if x, ok := x.Body.(*ClientMessage_Voice); ok {
+			return x.Voice
+		}
+	}
+	return nil
+}
+
 type isClientMessage_Body interface {
 	isClientMessage_Body()
 }
@@ -458,9 +592,15 @@ type ClientMessage_Ping struct {
 	Ping *Ping `protobuf:"bytes,2,opt,name=ping,proto3,oneof"`
 }
 
+type ClientMessage_Voice struct {
+	Voice *VoiceSignal `protobuf:"bytes,3,opt,name=voice,proto3,oneof"`
+}
+
 func (*ClientMessage_Input) isClientMessage_Body() {}
 
 func (*ClientMessage_Ping) isClientMessage_Body() {}
+
+func (*ClientMessage_Voice) isClientMessage_Body() {}
 
 // Who a player is, the parts that do not change while they are connected: their id, which planet they are
 // on, which of the character pool they wear, and the name over their head. Character and name ride here,
@@ -477,7 +617,7 @@ type PlayerInfo struct {
 
 func (x *PlayerInfo) Reset() {
 	*x = PlayerInfo{}
-	mi := &file_game_proto_msgTypes[7]
+	mi := &file_game_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -489,7 +629,7 @@ func (x *PlayerInfo) String() string {
 func (*PlayerInfo) ProtoMessage() {}
 
 func (x *PlayerInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_game_proto_msgTypes[7]
+	mi := &file_game_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -502,7 +642,7 @@ func (x *PlayerInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PlayerInfo.ProtoReflect.Descriptor instead.
 func (*PlayerInfo) Descriptor() ([]byte, []int) {
-	return file_game_proto_rawDescGZIP(), []int{7}
+	return file_game_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *PlayerInfo) GetId() string {
@@ -546,7 +686,7 @@ type Welcome struct {
 
 func (x *Welcome) Reset() {
 	*x = Welcome{}
-	mi := &file_game_proto_msgTypes[8]
+	mi := &file_game_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -558,7 +698,7 @@ func (x *Welcome) String() string {
 func (*Welcome) ProtoMessage() {}
 
 func (x *Welcome) ProtoReflect() protoreflect.Message {
-	mi := &file_game_proto_msgTypes[8]
+	mi := &file_game_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -571,7 +711,7 @@ func (x *Welcome) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Welcome.ProtoReflect.Descriptor instead.
 func (*Welcome) Descriptor() ([]byte, []int) {
-	return file_game_proto_rawDescGZIP(), []int{8}
+	return file_game_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *Welcome) GetYou() *PlayerInfo {
@@ -598,7 +738,7 @@ type Join struct {
 
 func (x *Join) Reset() {
 	*x = Join{}
-	mi := &file_game_proto_msgTypes[9]
+	mi := &file_game_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -610,7 +750,7 @@ func (x *Join) String() string {
 func (*Join) ProtoMessage() {}
 
 func (x *Join) ProtoReflect() protoreflect.Message {
-	mi := &file_game_proto_msgTypes[9]
+	mi := &file_game_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -623,7 +763,7 @@ func (x *Join) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Join.ProtoReflect.Descriptor instead.
 func (*Join) Descriptor() ([]byte, []int) {
-	return file_game_proto_rawDescGZIP(), []int{9}
+	return file_game_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *Join) GetPlayer() *PlayerInfo {
@@ -643,7 +783,7 @@ type Leave struct {
 
 func (x *Leave) Reset() {
 	*x = Leave{}
-	mi := &file_game_proto_msgTypes[10]
+	mi := &file_game_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -655,7 +795,7 @@ func (x *Leave) String() string {
 func (*Leave) ProtoMessage() {}
 
 func (x *Leave) ProtoReflect() protoreflect.Message {
-	mi := &file_game_proto_msgTypes[10]
+	mi := &file_game_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -668,7 +808,7 @@ func (x *Leave) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Leave.ProtoReflect.Descriptor instead.
 func (*Leave) Descriptor() ([]byte, []int) {
-	return file_game_proto_rawDescGZIP(), []int{10}
+	return file_game_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *Leave) GetId() string {
@@ -678,8 +818,8 @@ func (x *Leave) GetId() string {
 	return ""
 }
 
-// Everything the server can send. The oneof is the extension point promised in step 7: snapshot was the
-// only variant then, and join, the roster, leaves, and the pong reply land here now.
+// Everything the server can send. The oneof means a new kind of message is a new variant here, and old
+// clients ignore variants they do not know rather than breaking on them.
 type ServerMessage struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Types that are valid to be assigned to Body:
@@ -689,6 +829,7 @@ type ServerMessage struct {
 	//	*ServerMessage_Join
 	//	*ServerMessage_Leave
 	//	*ServerMessage_Pong
+	//	*ServerMessage_Voice
 	Body          isServerMessage_Body `protobuf_oneof:"body"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -696,7 +837,7 @@ type ServerMessage struct {
 
 func (x *ServerMessage) Reset() {
 	*x = ServerMessage{}
-	mi := &file_game_proto_msgTypes[11]
+	mi := &file_game_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -708,7 +849,7 @@ func (x *ServerMessage) String() string {
 func (*ServerMessage) ProtoMessage() {}
 
 func (x *ServerMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_game_proto_msgTypes[11]
+	mi := &file_game_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -721,7 +862,7 @@ func (x *ServerMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ServerMessage.ProtoReflect.Descriptor instead.
 func (*ServerMessage) Descriptor() ([]byte, []int) {
-	return file_game_proto_rawDescGZIP(), []int{11}
+	return file_game_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *ServerMessage) GetBody() isServerMessage_Body {
@@ -776,6 +917,15 @@ func (x *ServerMessage) GetPong() *Pong {
 	return nil
 }
 
+func (x *ServerMessage) GetVoice() *VoiceSignal {
+	if x != nil {
+		if x, ok := x.Body.(*ServerMessage_Voice); ok {
+			return x.Voice
+		}
+	}
+	return nil
+}
+
 type isServerMessage_Body interface {
 	isServerMessage_Body()
 }
@@ -800,6 +950,10 @@ type ServerMessage_Pong struct {
 	Pong *Pong `protobuf:"bytes,5,opt,name=pong,proto3,oneof"`
 }
 
+type ServerMessage_Voice struct {
+	Voice *VoiceSignal `protobuf:"bytes,6,opt,name=voice,proto3,oneof"`
+}
+
 func (*ServerMessage_Snapshot) isServerMessage_Body() {}
 
 func (*ServerMessage_Welcome) isServerMessage_Body() {}
@@ -809,6 +963,8 @@ func (*ServerMessage_Join) isServerMessage_Body() {}
 func (*ServerMessage_Leave) isServerMessage_Body() {}
 
 func (*ServerMessage_Pong) isServerMessage_Body() {}
+
+func (*ServerMessage_Voice) isServerMessage_Body() {}
 
 var File_game_proto protoreflect.FileDescriptor
 
@@ -840,10 +996,21 @@ const file_game_proto_rawDesc = "" +
 	"\vclient_time\x18\x01 \x01(\x01R\n" +
 	"clientTime\x12\x1f\n" +
 	"\vserver_tick\x18\x02 \x01(\rR\n" +
-	"serverTick\"f\n" +
+	"serverTick\"\xbe\x01\n" +
+	"\vVoiceSignal\x12\x12\n" +
+	"\x04peer\x18\x01 \x01(\tR\x04peer\x12.\n" +
+	"\x04kind\x18\x02 \x01(\x0e2\x1a.punch.v1.VoiceSignal.KindR\x04kind\x12\x18\n" +
+	"\apayload\x18\x03 \x01(\tR\apayload\"Q\n" +
+	"\x04Kind\x12\x14\n" +
+	"\x10KIND_UNSPECIFIED\x10\x00\x12\x0e\n" +
+	"\n" +
+	"KIND_OFFER\x10\x01\x12\x0f\n" +
+	"\vKIND_ANSWER\x10\x02\x12\x12\n" +
+	"\x0eKIND_CANDIDATE\x10\x03\"\x95\x01\n" +
 	"\rClientMessage\x12'\n" +
 	"\x05input\x18\x01 \x01(\v2\x0f.punch.v1.InputH\x00R\x05input\x12$\n" +
-	"\x04ping\x18\x02 \x01(\v2\x0e.punch.v1.PingH\x00R\x04pingB\x06\n" +
+	"\x04ping\x18\x02 \x01(\v2\x0e.punch.v1.PingH\x00R\x04ping\x12-\n" +
+	"\x05voice\x18\x03 \x01(\v2\x15.punch.v1.VoiceSignalH\x00R\x05voiceB\x06\n" +
 	"\x04body\"k\n" +
 	"\n" +
 	"PlayerInfo\x12\x0e\n" +
@@ -857,13 +1024,14 @@ const file_game_proto_rawDesc = "" +
 	"\x04Join\x12,\n" +
 	"\x06player\x18\x01 \x01(\v2\x14.punch.v1.PlayerInfoR\x06player\"\x17\n" +
 	"\x05Leave\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\"\xed\x01\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\"\x9c\x02\n" +
 	"\rServerMessage\x120\n" +
 	"\bsnapshot\x18\x01 \x01(\v2\x12.punch.v1.SnapshotH\x00R\bsnapshot\x12-\n" +
 	"\awelcome\x18\x02 \x01(\v2\x11.punch.v1.WelcomeH\x00R\awelcome\x12$\n" +
 	"\x04join\x18\x03 \x01(\v2\x0e.punch.v1.JoinH\x00R\x04join\x12'\n" +
 	"\x05leave\x18\x04 \x01(\v2\x0f.punch.v1.LeaveH\x00R\x05leave\x12$\n" +
-	"\x04pong\x18\x05 \x01(\v2\x0e.punch.v1.PongH\x00R\x04pongB\x06\n" +
+	"\x04pong\x18\x05 \x01(\v2\x0e.punch.v1.PongH\x00R\x04pong\x12-\n" +
+	"\x05voice\x18\x06 \x01(\v2\x15.punch.v1.VoiceSignalH\x00R\x05voiceB\x06\n" +
 	"\x04bodyB*Z(punchpunchpunch/server/gen/gamepb;gamepbb\x06proto3"
 
 var (
@@ -878,41 +1046,47 @@ func file_game_proto_rawDescGZIP() []byte {
 	return file_game_proto_rawDescData
 }
 
-var file_game_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
+var file_game_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_game_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
 var file_game_proto_goTypes = []any{
-	(*Vec3)(nil),           // 0: punch.v1.Vec3
-	(*Input)(nil),          // 1: punch.v1.Input
-	(*PlayerSnapshot)(nil), // 2: punch.v1.PlayerSnapshot
-	(*Snapshot)(nil),       // 3: punch.v1.Snapshot
-	(*Ping)(nil),           // 4: punch.v1.Ping
-	(*Pong)(nil),           // 5: punch.v1.Pong
-	(*ClientMessage)(nil),  // 6: punch.v1.ClientMessage
-	(*PlayerInfo)(nil),     // 7: punch.v1.PlayerInfo
-	(*Welcome)(nil),        // 8: punch.v1.Welcome
-	(*Join)(nil),           // 9: punch.v1.Join
-	(*Leave)(nil),          // 10: punch.v1.Leave
-	(*ServerMessage)(nil),  // 11: punch.v1.ServerMessage
+	(VoiceSignal_Kind)(0),  // 0: punch.v1.VoiceSignal.Kind
+	(*Vec3)(nil),           // 1: punch.v1.Vec3
+	(*Input)(nil),          // 2: punch.v1.Input
+	(*PlayerSnapshot)(nil), // 3: punch.v1.PlayerSnapshot
+	(*Snapshot)(nil),       // 4: punch.v1.Snapshot
+	(*Ping)(nil),           // 5: punch.v1.Ping
+	(*Pong)(nil),           // 6: punch.v1.Pong
+	(*VoiceSignal)(nil),    // 7: punch.v1.VoiceSignal
+	(*ClientMessage)(nil),  // 8: punch.v1.ClientMessage
+	(*PlayerInfo)(nil),     // 9: punch.v1.PlayerInfo
+	(*Welcome)(nil),        // 10: punch.v1.Welcome
+	(*Join)(nil),           // 11: punch.v1.Join
+	(*Leave)(nil),          // 12: punch.v1.Leave
+	(*ServerMessage)(nil),  // 13: punch.v1.ServerMessage
 }
 var file_game_proto_depIdxs = []int32{
-	0,  // 0: punch.v1.Input.dir:type_name -> punch.v1.Vec3
-	0,  // 1: punch.v1.PlayerSnapshot.position:type_name -> punch.v1.Vec3
-	0,  // 2: punch.v1.PlayerSnapshot.forward:type_name -> punch.v1.Vec3
-	2,  // 3: punch.v1.Snapshot.players:type_name -> punch.v1.PlayerSnapshot
-	1,  // 4: punch.v1.ClientMessage.input:type_name -> punch.v1.Input
-	4,  // 5: punch.v1.ClientMessage.ping:type_name -> punch.v1.Ping
-	7,  // 6: punch.v1.Welcome.you:type_name -> punch.v1.PlayerInfo
-	7,  // 7: punch.v1.Welcome.players:type_name -> punch.v1.PlayerInfo
-	7,  // 8: punch.v1.Join.player:type_name -> punch.v1.PlayerInfo
-	3,  // 9: punch.v1.ServerMessage.snapshot:type_name -> punch.v1.Snapshot
-	8,  // 10: punch.v1.ServerMessage.welcome:type_name -> punch.v1.Welcome
-	9,  // 11: punch.v1.ServerMessage.join:type_name -> punch.v1.Join
-	10, // 12: punch.v1.ServerMessage.leave:type_name -> punch.v1.Leave
-	5,  // 13: punch.v1.ServerMessage.pong:type_name -> punch.v1.Pong
-	14, // [14:14] is the sub-list for method output_type
-	14, // [14:14] is the sub-list for method input_type
-	14, // [14:14] is the sub-list for extension type_name
-	14, // [14:14] is the sub-list for extension extendee
-	0,  // [0:14] is the sub-list for field type_name
+	1,  // 0: punch.v1.Input.dir:type_name -> punch.v1.Vec3
+	1,  // 1: punch.v1.PlayerSnapshot.position:type_name -> punch.v1.Vec3
+	1,  // 2: punch.v1.PlayerSnapshot.forward:type_name -> punch.v1.Vec3
+	3,  // 3: punch.v1.Snapshot.players:type_name -> punch.v1.PlayerSnapshot
+	0,  // 4: punch.v1.VoiceSignal.kind:type_name -> punch.v1.VoiceSignal.Kind
+	2,  // 5: punch.v1.ClientMessage.input:type_name -> punch.v1.Input
+	5,  // 6: punch.v1.ClientMessage.ping:type_name -> punch.v1.Ping
+	7,  // 7: punch.v1.ClientMessage.voice:type_name -> punch.v1.VoiceSignal
+	9,  // 8: punch.v1.Welcome.you:type_name -> punch.v1.PlayerInfo
+	9,  // 9: punch.v1.Welcome.players:type_name -> punch.v1.PlayerInfo
+	9,  // 10: punch.v1.Join.player:type_name -> punch.v1.PlayerInfo
+	4,  // 11: punch.v1.ServerMessage.snapshot:type_name -> punch.v1.Snapshot
+	10, // 12: punch.v1.ServerMessage.welcome:type_name -> punch.v1.Welcome
+	11, // 13: punch.v1.ServerMessage.join:type_name -> punch.v1.Join
+	12, // 14: punch.v1.ServerMessage.leave:type_name -> punch.v1.Leave
+	6,  // 15: punch.v1.ServerMessage.pong:type_name -> punch.v1.Pong
+	7,  // 16: punch.v1.ServerMessage.voice:type_name -> punch.v1.VoiceSignal
+	17, // [17:17] is the sub-list for method output_type
+	17, // [17:17] is the sub-list for method input_type
+	17, // [17:17] is the sub-list for extension type_name
+	17, // [17:17] is the sub-list for extension extendee
+	0,  // [0:17] is the sub-list for field type_name
 }
 
 func init() { file_game_proto_init() }
@@ -920,29 +1094,32 @@ func file_game_proto_init() {
 	if File_game_proto != nil {
 		return
 	}
-	file_game_proto_msgTypes[6].OneofWrappers = []any{
+	file_game_proto_msgTypes[7].OneofWrappers = []any{
 		(*ClientMessage_Input)(nil),
 		(*ClientMessage_Ping)(nil),
+		(*ClientMessage_Voice)(nil),
 	}
-	file_game_proto_msgTypes[11].OneofWrappers = []any{
+	file_game_proto_msgTypes[12].OneofWrappers = []any{
 		(*ServerMessage_Snapshot)(nil),
 		(*ServerMessage_Welcome)(nil),
 		(*ServerMessage_Join)(nil),
 		(*ServerMessage_Leave)(nil),
 		(*ServerMessage_Pong)(nil),
+		(*ServerMessage_Voice)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_game_proto_rawDesc), len(file_game_proto_rawDesc)),
-			NumEnums:      0,
-			NumMessages:   12,
+			NumEnums:      1,
+			NumMessages:   13,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
 		GoTypes:           file_game_proto_goTypes,
 		DependencyIndexes: file_game_proto_depIdxs,
+		EnumInfos:         file_game_proto_enumTypes,
 		MessageInfos:      file_game_proto_msgTypes,
 	}.Build()
 	File_game_proto = out.File

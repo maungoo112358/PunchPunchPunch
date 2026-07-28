@@ -19,9 +19,15 @@ import (
 	"github.com/coder/websocket"
 )
 
-// The game server. Right now it does one thing: accept WebSocket connections, remember who is
-// connected, and say so in the log when people come and go. No game, no messages, no tick. Those
-// arrive in steps 7 and 9, and they all stand on this.
+// The game server's front door and lifecycle. Settings from the environment, the HTTP mux, the origin
+// allowlist, the per-connection read loop, and a graceful shutdown.
+// A socket that gets through here is resolved into a player three ways, by login token, by guest resume,
+// or by a fresh draw from the pool, and then registered with the hub.
+// The game itself lives next door. hub.go holds who is connected and where each is standing, tick.go
+// steps everyone thirty times a second and broadcasts snapshots, and sim/ is the walk math mirrored from
+// the client and pinned to it by a golden test.
+// auth.go, store.go and telegram.go are the three optional plug-ins. Each one can be pulled without
+// touching the loop, and the server struct below is where they hang.
 //
 // Two terminals to run the whole thing: `go run .` here, `npm run dev` in client/.
 
@@ -32,10 +38,9 @@ const (
 	// Where the client is served from during development. Vite's dev server, on your machine and on
 	// your phone over the local network.
 	defaultOrigins = "localhost:5173,127.0.0.1:5173,*.local:5173"
-	// How long a connection may go without sending anything before the server drops it. Once input
-	// streams every tick (step 9) a real player resets this constantly, so a socket that stays silent
-	// this long is an abandoned tab worth reaping. Overridable with IDLE_TIMEOUT, mostly so the test
-	// can use a tiny value.
+	// How long a connection may go without sending anything before the server drops it. A real player
+	// streams input every tick and so resets this constantly, which makes a socket silent this long an
+	// abandoned tab worth reaping. Overridable with IDLE_TIMEOUT, mostly so the test can use a tiny value.
 	defaultIdle = 30 * time.Second
 	// The key that signs login tokens. The dev default lets the whole thing run out of the box; on the
 	// box TOKEN_SECRET is set to a real random string so tokens minted here cannot be forged. A token
@@ -155,7 +160,7 @@ func main() {
 	// The login plug-in. Checks a seeded account and hands back a signed token the socket carries.
 	mux.HandleFunc("/login", s.handleLogin)
 	// Something to hit with a browser or a health check that is not a WebSocket, so "is it up" has an
-	// easy answer. The deploy in step 6 uses this to know the box is alive.
+	// easy answer. The Lightsail deploy uses this to know the box is alive.
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
 		w.Write([]byte("ok\n"))
@@ -261,10 +266,10 @@ func (s *server) handleWS(w http.ResponseWriter, r *http.Request) {
 		log.Printf("drop  %s (%d connected)", client.ID, s.hub.Count())
 	}()
 
-	// Read until the client goes away. Anything that arrives is just noted for now; step 9 starts
-	// acting on it. Each read carries the idle deadline: a message ends the read and the next loop makes
-	// a fresh timeout, so the clock resets on every message. If the deadline fires first the read fails
-	// with a deadline error and we drop them.
+	// Read until the client goes away, handing each frame to the switch at the bottom of the loop.
+	// Each read carries the idle deadline: a message ends the read and the next loop makes a fresh
+	// timeout, so the clock resets on every message. If the deadline fires first the read fails with a
+	// deadline error and we drop them.
 	for {
 		// A zero or negative idle window turns the kick off entirely, which is what IDLE_TIMEOUT=0 on
 		// the box means. Otherwise the read carries the deadline.
@@ -313,6 +318,11 @@ func (s *server) handleWS(w http.ResponseWriter, r *http.Request) {
 				ServerTick: s.tickNum.Load(),
 			}}}
 			s.sendMsg(r.Context(), client, pong)
+		// Voice handshakes are forwarded from here rather than queued for the tick loop, for the same
+		// reason a ping is answered here: the tick loop batches at 30Hz, and both of these want to move
+		// the instant they arrive. See voice.go, the plug-in.
+		case *pb.ClientMessage_Voice:
+			s.routeVoice(r.Context(), client, body.Voice)
 		}
 	}
 }

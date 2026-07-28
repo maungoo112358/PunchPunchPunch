@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import type { GLTF } from "three/addons/loaders/GLTFLoader.js";
 import { clone as cloneRig } from "three/addons/utils/SkeletonUtils.js";
+import { profileForModel, type ModelProfile } from "../config/characters.js";
 
 // One shared loader instance is fine for all characters.
 const loader = new GLTFLoader();
@@ -42,10 +43,10 @@ const TOON_STEPS = 3;
 // silhouette. Raise it to lighten the shadows more.
 const TOON_SHADOW_FLOOR = 0.4;
 
-// The ink line. Color is the outline, thickness is how far the shell is pushed out in the model's
-// own units, so a bigger model needs a bigger number. Tune thickness by eye until the line reads.
+// The ink line. Every model shares this color, but not the thickness: that is a push in the model's own
+// units, so a model built at a different size needs a different number and it lives in the model's
+// profile. Tune it by eye until the line reads.
 const OUTLINE_COLOR = 0x141414; // near-black, a hair softer than pure black
-const OUTLINE_THICKNESS = 0.03;
 
 // Build a tiny ramp texture (TOON_STEPS wide, 1 tall) going dark to light. The darkest step starts
 // at TOON_SHADOW_FLOOR instead of 0, then it climbs to full bright. The toon material reads how lit
@@ -73,10 +74,10 @@ function makeToonGradient(steps: number) {
 // Two things worth knowing: we push the vertex BEFORE the skinning step so the shell bends with the
 // animation, not a frozen T-pose. And we push along aSmoothNormal (a welded normal we compute in
 // addSmoothNormals), not the raw normal, so the shell does not tear open at the model's hard edges.
-function makeOutlineMaterial() {
+function makeOutlineMaterial(thickness: number) {
   const mat = new THREE.MeshBasicMaterial({ color: OUTLINE_COLOR, side: THREE.BackSide });
   mat.onBeforeCompile = (shader) => {
-    shader.uniforms.uOutline = { value: OUTLINE_THICKNESS };
+    shader.uniforms.uOutline = { value: thickness };
     shader.vertexShader = "uniform float uOutline;\nattribute vec3 aSmoothNormal;\n" + shader.vertexShader;
     shader.vertexShader = shader.vertexShader.replace(
       "#include <begin_vertex>",
@@ -138,6 +139,7 @@ export class Character {
   actions: Record<string, THREE.AnimationAction>;
   current: string | null;
   modelUrl: string | null; // the model currently loaded or loading, so setModel can no-op a repeat
+  profile: ModelProfile; // the loaded model's clip names, ink thickness and sizing
 
   // modelUrl may be null: the instance exists (so the camera, grass and nameplate can hold it) but wears
   // nothing until setModel is called, which is what lets a player's model wait for the server to say which.
@@ -149,8 +151,15 @@ export class Character {
     this.actions = {}; // name -> AnimationAction (pre-built for crossfading)
     this.current = null; // name of the active action
     this.modelUrl = null;
+    this.profile = profileForModel(""); // replaced the moment a real model is set
 
     if (modelUrl) this.setModel(modelUrl);
+  }
+
+  // What this model calls the clip the sim asked for. Most models are asked for a name they already use,
+  // so the lookup usually falls straight through.
+  _clip(name: string) {
+    return this.profile.clips[name] ?? name;
   }
 
   // Load a model, or swap to a different one, keeping this same Character instance so everything holding
@@ -160,6 +169,7 @@ export class Character {
     if (url === this.modelUrl) return;
     this._clearModel();
     this.modelUrl = url;
+    this.profile = profileForModel(url);
     loadModel(url)
       .then((gltf) => {
         if (this.modelUrl === url) this._onLoad(gltf); // ignore a load that finished after another swap
@@ -172,21 +182,29 @@ export class Character {
     // clone: a plain .clone() copies the meshes but leaves them pointing at the original's skeleton, so
     // every copy would collapse onto whatever the first one is doing. cloneRig rebuilds the bones and
     // rebinds each mesh to its own, while still sharing the geometry, so the copies are cheap.
-    const model = cloneRig(gltf.scene);
+    const rig = cloneRig(gltf.scene);
     // One shared ramp and one shared outline material for every mesh, so they all match.
     const gradient = makeToonGradient(TOON_STEPS);
-    const outlineMat = makeOutlineMaterial();
+    const outlineMat = makeOutlineMaterial(this.profile.outline);
     // Traverse to the meshes: flag them as shadow casters, and swap their realistic material for a
     // toon one. We keep the model's painted texture and base color, but change how light reads on
     // it: flat cel bands instead of a smooth gradient. Collect the meshes as we go so we can add
     // outline shells right after, not during, the walk (adding children mid walk would make traverse
     // visit them too).
     const meshes: THREE.Mesh[] = [];
-    model.traverse((obj) => {
+    rig.traverse((obj) => {
       // traverse walks every node in the model and hands each one back as a plain Object3D, which has no
       // material and no isMesh. isMesh is three's own "I am a mesh" marker, so we take the Object3D as a
       // Mesh just long enough to ask, and keep that view for the rest of the block. Same object either
       // way, we are only telling TypeScript what it already is.
+      // Anything hanging off a hand slot is a prop the model can hold, and everything the profile did not
+      // pick gets switched off here, before it is given a material or an outline shell. Asking the parent
+      // rather than matching names means this covers every character without a list per model: the body
+      // parts hang off Rig, head and chest, only the weapons hang off a handslot.
+      if ((obj.parent?.name ?? "").startsWith("handslot") && obj.name !== this.profile.hold) {
+        obj.visible = false;
+        return;
+      }
       const mesh = obj as THREE.Mesh;
       if (mesh.isMesh) {
         mesh.castShadow = true; // he still drops a shadow on the grass, so he stays grounded
@@ -233,33 +251,48 @@ export class Character {
       shell.frustumCulled = false; // share the body's fate on screen, never cull it on its own
       obj.add(shell);
     }
+    // The rig goes inside a wrapper, and the wrapper is what the draw pass positions and turns. Sizing and
+    // the foot lift ride on the rig instead, so they survive the position written every frame and they
+    // follow the model's own rotation rather than fighting it as the surface curves underneath.
+    rig.scale.setScalar(this.profile.scale);
+    rig.position.y = this.profile.lift;
+    const model = new THREE.Group();
+    model.add(rig);
     if (this.spawn) model.position.copy(this.spawn); // place on surface (origin would bury it in the planet)
     this.scene.add(model);
     this.model = model;
 
-    // Build an action per clip up front so we can crossfade between them.
-    this.mixer = new THREE.AnimationMixer(model);
+    // Build an action per clip up front so we can crossfade between them. Keyed by the name the FILE uses,
+    // which _clip translates the sim's name into.
+    this.mixer = new THREE.AnimationMixer(rig);
     for (const clip of gltf.animations) {
       this.actions[clip.name] = this.mixer.clipAction(clip);
     }
 
-    // Start in Idle.
+    // Start in Idle. current holds the sim's name for it, so comparisons stay in the sim's vocabulary.
     this.current = "Idle";
-    this.actions["Idle"]?.play();
+    this.actions[this._clip("Idle")]?.play();
 
-    console.log("Character loaded. Clips:", Object.keys(this.actions));
+    // Height is logged because scale and lift are eye-tuned dials, and a measured number beats a guess.
+    const box = new THREE.Box3().setFromObject(model);
+    const missing = ["Idle", "Walk", "Run"].filter((n) => !this.actions[this._clip(n)]);
+    console.log(
+      `Character loaded ${this.modelUrl}: ${gltf.animations.length} clips, ` +
+        `height ${(box.max.y - box.min.y).toFixed(2)}, feet at y ${box.min.y.toFixed(2)}` +
+        (missing.length ? `  MISSING: ${missing.join(", ")}` : "")
+    );
   }
 
   // Crossfade to a named clip (~ Unity Animator transition). No-op if already on it.
   setAction(name: string, fade = 0.2) {
     if (this.current === name) return;
-    const next = this.actions[name];
+    const next = this.actions[this._clip(name)];
     if (!next) return;
     // current starts out null, and you cannot look something up by null. Before, JavaScript quietly
     // turned the null into the text "null", found no clip under that name, and handed back nothing. The
     // check does the same thing out loud. In practice we never get here with a null: the line above
     // bails out until the clips have loaded, and by then current is "Idle".
-    const prev = this.current ? this.actions[this.current] : undefined;
+    const prev = this.current ? this.actions[this._clip(this.current)] : undefined;
     if (prev) prev.fadeOut(fade);
     next.reset().fadeIn(fade).play();
     this.current = name;

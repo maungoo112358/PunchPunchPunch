@@ -32,8 +32,9 @@ type Client struct {
 	Addr string // where they connected from, for the log
 	conn *websocket.Conn
 
-	// Guards writes to conn. The tick loop sends snapshots and membership, and the read goroutine answers
-	// a ping with a pong, so two goroutines can reach for the socket at once. coder/websocket forbids
+	// Guards writes to conn. Three different goroutines can reach for this socket at once: the tick loop
+	// sending snapshots and membership, this connection's own read goroutine answering a ping, and
+	// another player's read goroutine forwarding a voice handshake here. coder/websocket forbids
 	// concurrent writes, so every send takes this first.
 	writeMu sync.Mutex
 
@@ -132,6 +133,15 @@ func (h *Hub) Count() int {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	return len(h.clients)
+}
+
+// Get finds one client by id, or nil if nobody by that id is connected. Voice signalling uses it to hand
+// a handshake message to the player it is addressed to. Nil is an ordinary answer here, not an error:
+// the addressee may have left in the moment between the sender deciding to call them and this arriving.
+func (h *Hub) Get(id string) *Client {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.clients[id]
 }
 
 // All hands back a copy of the current clients. A copy, so callers can take their time with the list

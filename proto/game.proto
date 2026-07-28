@@ -51,12 +51,37 @@ message Pong {
   uint32 server_tick = 2;
 }
 
-// Everything a client can send. A oneof so later steps add chat and the rest as new variants without
-// reshaping the socket.
+// One step of the handshake two browsers go through before they can send each other sound. The server
+// never looks inside: it reads peer, forwards the message to that player, and writes the sender's id
+// into peer on the way back out.
+//
+// So peer always means "the player at the other end of this exchange", whichever direction you are
+// holding it. Going up it is who the message is for; coming down it is who it came from. There is
+// deliberately no sender field on the way up, because the server already knows who sent it from the
+// socket it arrived on, and a client-supplied sender would just be a way to impersonate someone.
+message VoiceSignal {
+  // Which step of the handshake this is. Only the client cares; the server forwards all three the same.
+  enum Kind {
+    KIND_UNSPECIFIED = 0;
+    KIND_OFFER = 1; // "here is the sound I can send you, and how to reach me"
+    KIND_ANSWER = 2; // the reply that completes the pair
+    KIND_CANDIDATE = 3; // one address this browser might be reachable at, sent as each one is found
+  }
+  string peer = 1;
+  Kind kind = 2;
+  // Whatever the browser produced for this step, carried through untouched. Offers and answers hold an
+  // audio description, a candidate holds one address. Opaque on purpose: the wire never has to know or
+  // care what browsers put in them, which is also why this stays a string rather than a parsed shape.
+  string payload = 3;
+}
+
+// Everything a client can send. A oneof, so a new kind of message becomes a new variant instead of a
+// reshaped socket.
 message ClientMessage {
   oneof body {
     Input input = 1;
     Ping ping = 2;
+    VoiceSignal voice = 3;
   }
 }
 
@@ -88,8 +113,8 @@ message Leave {
   string id = 1;
 }
 
-// Everything the server can send. The oneof is the extension point promised in step 7: snapshot was the
-// only variant then, and join, the roster, leaves, and the pong reply land here now.
+// Everything the server can send. The oneof means a new kind of message is a new variant here, and old
+// clients ignore variants they do not know rather than breaking on them.
 message ServerMessage {
   oneof body {
     Snapshot snapshot = 1;
@@ -97,5 +122,6 @@ message ServerMessage {
     Join join = 3;
     Leave leave = 4;
     Pong pong = 5;
+    VoiceSignal voice = 6;
   }
 }

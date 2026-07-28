@@ -28,7 +28,22 @@ func TestRoundTrip(t *testing.T) {
 		},
 	}}}
 
-	cases := []proto.Message{up, down}
+	// A voice handshake each way. The payload is deliberately awkward: a real audio description is many
+	// lines separated by carriage-return-newline pairs, and those have to survive JSON escaping exactly or
+	// the far browser is handed something it cannot read. The enum matters too, because JSON writes it as
+	// a name and protobuf as a number, so this is the one field where the two encodings look least alike.
+	voiceUp := &pb.ClientMessage{Body: &pb.ClientMessage_Voice{Voice: &pb.VoiceSignal{
+		Peer:    "p2",
+		Kind:    pb.VoiceSignal_KIND_OFFER,
+		Payload: "v=0\r\no=- 46117 2 IN IP4 127.0.0.1\r\ns=-\r\na=group:BUNDLE 0\r\n",
+	}}}
+	voiceDown := &pb.ServerMessage{Body: &pb.ServerMessage_Voice{Voice: &pb.VoiceSignal{
+		Peer:    "p1",
+		Kind:    pb.VoiceSignal_KIND_CANDIDATE,
+		Payload: `{"candidate":"candidate:1 1 udp 2113937151 192.168.0.5 54321 typ host","sdpMid":"0"}`,
+	}}}
+
+	cases := []proto.Message{up, down, voiceUp, voiceDown}
 	encodings := []struct {
 		name string
 		enc  Encoding

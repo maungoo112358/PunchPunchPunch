@@ -26,6 +26,8 @@ import { ALL_MODELS } from "./config/characters.js";
 import { createNetHud } from "./systems/netHud.js";
 import type { NetHudHandle } from "./systems/netHud.js";
 import { showLoginOverlay, restoreLoginToken, restoreGuest, saveGuest } from "./systems/loginOverlay.js";
+import { createVoice } from "./systems/voice.js";
+import { createVoicePanel, type VoicePanelHandle } from "./systems/voicePanel.js";
 import { COLORS } from "./config/palette.js";
 import type { PropEditor } from "./systems/propEditor.js";
 
@@ -106,10 +108,15 @@ let hud: NetHudHandle | null = null;
 
 const sunFollow = createSunFollow(sun, character);
 
-// Dev-only: P puts a second player in the map a few paces away and takes them out again. It only adds and
-// removes a map entry, and a whole character appears and vanishes because the view draws the map, which is
-// exactly what a snapshot off the network does. Stripped from release builds.
-if (import.meta.env.DEV) {
+// P puts a second player in the map a few paces away and takes them out again. It only adds and removes
+// a map entry, and a whole character appears and vanishes because the view draws the map, which is
+// exactly what a snapshot off the network does.
+//
+// NOT behind import.meta.env.DEV, on purpose and only for now: the deployed build is where models get
+// judged, and a DEV-gated key does not exist there at all. Put it back inside the gate once the KayKit
+// versus Quaternius question is settled, because a stray debug key on the live game is not something to
+// leave lying around.
+{
   const TEST_ID = "test";
   window.addEventListener("keydown", (e) => {
     if (e.code === "KeyP") {
@@ -119,7 +126,12 @@ if (import.meta.env.DEV) {
       } else {
         const at = spawn.clone().add(new THREE.Vector3(4, 0, 2));
         planet.placeOnSurface(at);
-        world.add(TEST_ID, at);
+        const test = world.add(TEST_ID, at);
+        // Wears the KayKit mage so it stands next to your Quaternius character under the same sun, the
+        // same toon ramp and the same ink line. That side by side is the whole point of the test player
+        // while we are deciding whether to move the cast over to KayKit.
+        test.character = "mage";
+        test.name = "KayKit Mage";
         console.log("test player added at", at);
       }
     }
@@ -233,16 +245,55 @@ function startNetworking(start: NetStart) {
   // and a resume that had to fall back to a different character. A login does not save; its token is the
   // memory. The rest of the world layer is untouched, which is why onJoin and the others pass straight
   // through.
+  // Voice. It carries no sound through our server: each browser opens a direct connection to each other
+  // browser and the audio goes straight between them, so all the server does is pass the handshake along.
+  // Both of these are declared before the session because the session routes voice messages into them,
+  // and both reach back into the session to send. The arrow functions are what let that circle close:
+  // they are written now and only run later, once everything exists.
+  let voicePanel: VoicePanelHandle | null = null;
+  const voice = createVoice({
+    sendSignal: (peer, kind, payload) => session.sendVoice(peer, kind, payload),
+    onChange: () => voicePanel?.render(),
+    onLevel: () => voicePanel?.renderLevel(),
+  });
+
   const isGuest = start.kind === "guest";
   const session = createSession(socketUrl, {
     onWelcome: (welcome) => {
       if (isGuest && welcome.you) saveGuest(welcome.you.character, welcome.you.name);
+      // Our own id decides which side of a two-way handshake backs down when both call at once, so voice
+      // needs it before it can connect to anyone.
+      if (welcome.you) voice.setSelfId(welcome.you.id);
+      for (const player of welcome.players) voice.addPlayer(player.id);
       ws.onWelcome(welcome);
     },
-    onJoin: ws.onJoin,
-    onLeave: ws.onLeave,
+    onJoin: (join) => {
+      if (join.player) voice.addPlayer(join.player.id);
+      ws.onJoin(join);
+    },
+    onLeave: (leave) => {
+      voice.removePlayer(leave.id);
+      ws.onLeave(leave);
+    },
     onSnapshot: ws.onSnapshot,
     onPong: timeSync.onPong,
+    onVoice: voice.handleSignal,
+  });
+
+  voicePanel = createVoicePanel({
+    peers: voice.peerStates,
+    // The panel shows a name, not a "p3". The world map is already carrying it from the join.
+    nameFor: (id) => world.players.get(id)?.name || id,
+    joined: () => voice.joined,
+    micEnabled: () => voice.micEnabled,
+    selfSpeaking: () => voice.selfSpeaking,
+    selfLevel: () => voice.selfLevel,
+    speakingLevel: () => voice.speakingLevel,
+    audioState: () => voice.audioState,
+    monitoring: () => voice.monitoring,
+    onJoin: () => voice.join(),
+    onToggleMic: () => voice.setMicEnabled(!voice.micEnabled),
+    onToggleMonitor: () => voice.setMonitoring(!voice.monitoring),
   });
 
   // A clock probe once a second. The first pong sets the offset that lets remotes be drawn in the past;

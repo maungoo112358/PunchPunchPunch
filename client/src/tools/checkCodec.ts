@@ -8,7 +8,7 @@
 import { create, equals, toJsonString } from "@bufbuild/protobuf";
 import type { DescMessage, MessageShape } from "@bufbuild/protobuf";
 import { encode, decode, type Encoding } from "../net/codec.js";
-import { ClientMessageSchema, ServerMessageSchema } from "../net/gen/game_pb.js";
+import { ClientMessageSchema, ServerMessageSchema, VoiceSignal_Kind } from "../net/gen/game_pb.js";
 
 const ENCODINGS: Encoding[] = ["protobuf", "json"];
 
@@ -57,7 +57,36 @@ const down = create(ServerMessageSchema, {
   },
 });
 
-const failed = roundTrip("ClientMessage", ClientMessageSchema, up) + roundTrip("ServerMessage", ServerMessageSchema, down);
+// A voice handshake each way. The payload is deliberately awkward: a real audio description is many lines
+// separated by carriage-return-newline pairs, and those have to survive JSON escaping exactly or the far
+// browser is handed something it cannot read. The enum matters too, because JSON writes it as a name and
+// protobuf as a number, so it is the one field where the two encodings look least alike.
+const voiceUp = create(ClientMessageSchema, {
+  body: {
+    case: "voice",
+    value: {
+      peer: "p2",
+      kind: VoiceSignal_Kind.OFFER,
+      payload: "v=0\r\no=- 46117 2 IN IP4 127.0.0.1\r\ns=-\r\na=group:BUNDLE 0\r\n",
+    },
+  },
+});
+const voiceDown = create(ServerMessageSchema, {
+  body: {
+    case: "voice",
+    value: {
+      peer: "p1",
+      kind: VoiceSignal_Kind.CANDIDATE,
+      payload: `{"candidate":"candidate:1 1 udp 2113937151 192.168.0.5 54321 typ host","sdpMid":"0"}`,
+    },
+  },
+});
+
+const failed =
+  roundTrip("ClientMessage", ClientMessageSchema, up) +
+  roundTrip("ServerMessage", ServerMessageSchema, down) +
+  roundTrip("ClientMessage/voice", ClientMessageSchema, voiceUp) +
+  roundTrip("ServerMessage/voice", ServerMessageSchema, voiceDown);
 if (failed > 0) {
   console.error(`\n${failed} check(s) failed`);
   process.exit(1);

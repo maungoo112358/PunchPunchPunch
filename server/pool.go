@@ -7,11 +7,14 @@ import "sync"
 // collide most of the time, and two players wearing the same character is exactly the confusion this
 // prevents. A sixth player finds the character bag empty and is turned away, which is fine for a demo.
 //
-// The name comes through here too, but this is the seam login will replace at step 15: then your name is
-// your account name and only the character is still drawn from a bag.
+// The name comes through here too, and login (auth.go) plugs in at this seam: a logged-in player still
+// draws a character from the bag but wears their account name instead of the drawn one. The drawn name is
+// still what gets returned to the bag on leave, which is why the caller tracks poolName separately.
 
-// The five characters, as keys into the client's model catalog. The client maps each to a glTF.
-var characterPool = []string{"wizard", "witch", "goblin", "elf", "knight"}
+// The five characters, as keys into the client's model catalog. The client maps each to a glTF. These
+// must stay in step with CHARACTER_MODELS in client/src/config/characters.ts: a key that side does not
+// know draws the fallback model, so everyone would end up wearing the same thing.
+var characterPool = []string{"barbarian", "knight", "mage", "rogue", "rogue_hooded"}
 
 // A pool of Lovecraft names, one per character, so the two bags drain together. Swap freely; nothing
 // keys off the exact strings.
