@@ -41,7 +41,15 @@ function roundTrip<Desc extends DescMessage>(name: string, schema: Desc, message
 // One message each way, with values picked to catch trouble: a negative and a tiny fraction in a Vec3
 // (double must survive, not round to float), a second planet id, and both anim strings.
 const up = create(ClientMessageSchema, {
-  body: { case: "input", value: { seq: 42, dir: { x: 0.1, y: -2.5, z: 3.25 } } },
+  body: {
+    case: "input",
+    value: {
+      seq: 42,
+      dir: { x: 0.1, y: -2.5, z: 3.25 },
+      attack: true,
+      aim: { x: -0.75, y: 0.125, z: 8.5 },
+    },
+  },
 });
 const down = create(ServerMessageSchema, {
   body: {
@@ -52,6 +60,9 @@ const down = create(ServerMessageSchema, {
       players: [
         { id: "p1", planetId: 0, position: { x: 1, y: 2, z: 3 }, forward: { x: 0, y: 0, z: 1 }, anim: "Run" },
         { id: "p2", planetId: 1, position: { x: -36, y: 0.0001, z: 12.5 }, forward: { x: 1, y: 0, z: 0 }, anim: "Idle" },
+        // Mid-cast, so the attack counter is a non-zero number rather than the default protobuf leaves off
+        // the wire entirely. A field only ever sent as zero is a field neither encoding is really testing.
+        { id: "p3", planetId: 0, position: { x: 0, y: 36, z: 0 }, forward: { x: 0, y: 0, z: 1 }, anim: "Attack", attack: 17, attackBuffered: true, attackClip: 2 },
       ],
     },
   },

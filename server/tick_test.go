@@ -81,10 +81,17 @@ func TestTickLoopMovesAndBroadcasts(t *testing.T) {
 		if snap == nil {
 			continue // the Welcome, and later the roster, arrive before and between snapshots
 		}
-		if len(snap.Players) != 1 {
-			t.Fatalf("expected 1 player in the snapshot, got %d", len(snap.Players))
+		// Every snapshot also carries the training dummy (dummy.go), so find the row that is not it
+		// rather than trusting a position in the list.
+		var p *pb.Vec3
+		for _, row := range snap.Players {
+			if row.Id != dummyID {
+				p = row.Position
+			}
 		}
-		p := snap.Players[0].Position
+		if p == nil {
+			t.Fatalf("no real player in the snapshot, got %d rows", len(snap.Players))
+		}
 		dx, dy, dz := p.X-s.spawn.X, p.Y-s.spawn.Y, p.Z-s.spawn.Z
 		if dx*dx+dy*dy+dz*dz > 0.01 {
 			moved = true

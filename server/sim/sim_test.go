@@ -34,10 +34,15 @@ type fixture struct {
 }
 
 type stepData struct {
-	Dir      []float64 `json:"dir"`
-	Position []float64 `json:"position"`
-	Forward  []float64 `json:"forward"`
-	Anim     string    `json:"anim"`
+	Dir        []float64 `json:"dir"`
+	Attack     bool      `json:"attack"` // was the cast key pressed on this tick
+	Aim        []float64 `json:"aim"`    // where the crosshair pointed, only used while casting
+	Position   []float64 `json:"position"`
+	Forward    []float64 `json:"forward"`
+	Anim       string    `json:"anim"`
+	AttackLeft int       `json:"attackLeft"` // ticks of cast still to run afterwards
+	Buffered   bool      `json:"buffered"`   // a click held back, waiting for the recast window
+	AttackClip int       `json:"attackClip"` // which cast animation the rotation landed on
 }
 
 func vec(v []float64) Vec3 { return Vec3{v[0], v[1], v[2]} }
@@ -76,7 +81,8 @@ func TestWalkMatchesClient(t *testing.T) {
 	worstPos, worstFwd := 0.0, 0.0
 
 	for i, want := range f.Steps {
-		state = Step(state, Input{Seq: i, Dir: vec(want.Dir)}, planet, &path, f.TickDT)
+		in := Input{Seq: i, Dir: vec(want.Dir), Attack: want.Attack, Aim: vec(want.Aim)}
+		state = Step(state, in, planet, &path, f.TickDT)
 
 		posOff := state.Position.Sub(vec(want.Position)).Length()
 		fwdOff := state.Forward.Sub(vec(want.Forward)).Length()
@@ -91,6 +97,23 @@ func TestWalkMatchesClient(t *testing.T) {
 		}
 		if state.Anim != want.Anim {
 			t.Fatalf("tick %d: animation differs: go %q, client %q", i, state.Anim, want.Anim)
+		}
+		// The cast counter is checked exactly, not within an epsilon, because it is a whole number of
+		// ticks. One off here means the two sides let go of the root on different ticks, and the player
+		// would be free to move on one machine while still frozen on the other.
+		if state.Attack != want.AttackLeft {
+			t.Fatalf("tick %d: cast ticks left differ: go %d, client %d", i, state.Attack, want.AttackLeft)
+		}
+		// The held click matters as much as the counter. If one side remembers a press the other has
+		// forgotten, they fire the next spell on different ticks and the trajectories part from there.
+		if state.Buffered != want.Buffered {
+			t.Fatalf("tick %d: buffered click differs: go %v, client %v", i, state.Buffered, want.Buffered)
+		}
+		// Which animation the rotation landed on decides how long the cast runs, so the two sides
+		// disagreeing here is not a cosmetic difference: one would be rooted for 16 ticks and the other
+		// for 24, and the player would be walking on one machine while frozen on the other.
+		if state.AttackClip != want.AttackClip {
+			t.Fatalf("tick %d: cast animation differs: go %d, client %d", i, state.AttackClip, want.AttackClip)
 		}
 	}
 

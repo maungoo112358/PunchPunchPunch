@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file game.proto.
  */
 export const file_game: GenFile = /*@__PURE__*/
-  fileDesc("CgpnYW1lLnByb3RvEghwdW5jaC52MSInCgRWZWMzEgkKAXgYASABKAESCQoBeRgCIAEoARIJCgF6GAMgASgBIjEKBUlucHV0EgsKA3NlcRgBIAEoDRIbCgNkaXIYAiABKAsyDi5wdW5jaC52MS5WZWMzIoABCg5QbGF5ZXJTbmFwc2hvdBIKCgJpZBgBIAEoCRIRCglwbGFuZXRfaWQYAiABKA0SIAoIcG9zaXRpb24YAyABKAsyDi5wdW5jaC52MS5WZWMzEh8KB2ZvcndhcmQYBCABKAsyDi5wdW5jaC52MS5WZWMzEgwKBGFuaW0YBSABKAkiUAoIU25hcHNob3QSDAoEdGljaxgBIAEoDRILCgNhY2sYAiABKA0SKQoHcGxheWVycxgDIAMoCzIYLnB1bmNoLnYxLlBsYXllclNuYXBzaG90IhsKBFBpbmcSEwoLY2xpZW50X3RpbWUYASABKAEiMAoEUG9uZxITCgtjbGllbnRfdGltZRgBIAEoARITCgtzZXJ2ZXJfdGljaxgCIAEoDSKpAQoLVm9pY2VTaWduYWwSDAoEcGVlchgBIAEoCRIoCgRraW5kGAIgASgOMhoucHVuY2gudjEuVm9pY2VTaWduYWwuS2luZBIPCgdwYXlsb2FkGAMgASgJIlEKBEtpbmQSFAoQS0lORF9VTlNQRUNJRklFRBAAEg4KCktJTkRfT0ZGRVIQARIPCgtLSU5EX0FOU1dFUhACEhIKDktJTkRfQ0FORElEQVRFEAMigQEKDUNsaWVudE1lc3NhZ2USIAoFaW5wdXQYASABKAsyDy5wdW5jaC52MS5JbnB1dEgAEh4KBHBpbmcYAiABKAsyDi5wdW5jaC52MS5QaW5nSAASJgoFdm9pY2UYAyABKAsyFS5wdW5jaC52MS5Wb2ljZVNpZ25hbEgAQgYKBGJvZHkiTAoKUGxheWVySW5mbxIKCgJpZBgBIAEoCRIRCglwbGFuZXRfaWQYAiABKA0SEQoJY2hhcmFjdGVyGAMgASgJEgwKBG5hbWUYBCABKAkiUwoHV2VsY29tZRIhCgN5b3UYASABKAsyFC5wdW5jaC52MS5QbGF5ZXJJbmZvEiUKB3BsYXllcnMYAiADKAsyFC5wdW5jaC52MS5QbGF5ZXJJbmZvIiwKBEpvaW4SJAoGcGxheWVyGAEgASgLMhQucHVuY2gudjEuUGxheWVySW5mbyITCgVMZWF2ZRIKCgJpZBgBIAEoCSLvAQoNU2VydmVyTWVzc2FnZRImCghzbmFwc2hvdBgBIAEoCzISLnB1bmNoLnYxLlNuYXBzaG90SAASJAoHd2VsY29tZRgCIAEoCzIRLnB1bmNoLnYxLldlbGNvbWVIABIeCgRqb2luGAMgASgLMg4ucHVuY2gudjEuSm9pbkgAEiAKBWxlYXZlGAQgASgLMg8ucHVuY2gudjEuTGVhdmVIABIeCgRwb25nGAUgASgLMg4ucHVuY2gudjEuUG9uZ0gAEiYKBXZvaWNlGAYgASgLMhUucHVuY2gudjEuVm9pY2VTaWduYWxIAEIGCgRib2R5QipaKHB1bmNocHVuY2hwdW5jaC9zZXJ2ZXIvZ2VuL2dhbWVwYjtnYW1lcGJiBnByb3RvMw");
+  fileDesc("CgpnYW1lLnByb3RvEghwdW5jaC52MSInCgRWZWMzEgkKAXgYASABKAESCQoBeRgCIAEoARIJCgF6GAMgASgBIl4KBUlucHV0EgsKA3NlcRgBIAEoDRIbCgNkaXIYAiABKAsyDi5wdW5jaC52MS5WZWMzEg4KBmF0dGFjaxgDIAEoCBIbCgNhaW0YBCABKAsyDi5wdW5jaC52MS5WZWMzIr4BCg5QbGF5ZXJTbmFwc2hvdBIKCgJpZBgBIAEoCRIRCglwbGFuZXRfaWQYAiABKA0SIAoIcG9zaXRpb24YAyABKAsyDi5wdW5jaC52MS5WZWMzEh8KB2ZvcndhcmQYBCABKAsyDi5wdW5jaC52MS5WZWMzEgwKBGFuaW0YBSABKAkSDgoGYXR0YWNrGAYgASgNEhcKD2F0dGFja19idWZmZXJlZBgHIAEoCBITCgthdHRhY2tfY2xpcBgIIAEoDSJQCghTbmFwc2hvdBIMCgR0aWNrGAEgASgNEgsKA2FjaxgCIAEoDRIpCgdwbGF5ZXJzGAMgAygLMhgucHVuY2gudjEuUGxheWVyU25hcHNob3QiGwoEUGluZxITCgtjbGllbnRfdGltZRgBIAEoASIwCgRQb25nEhMKC2NsaWVudF90aW1lGAEgASgBEhMKC3NlcnZlcl90aWNrGAIgASgNIqkBCgtWb2ljZVNpZ25hbBIMCgRwZWVyGAEgASgJEigKBGtpbmQYAiABKA4yGi5wdW5jaC52MS5Wb2ljZVNpZ25hbC5LaW5kEg8KB3BheWxvYWQYAyABKAkiUQoES2luZBIUChBLSU5EX1VOU1BFQ0lGSUVEEAASDgoKS0lORF9PRkZFUhABEg8KC0tJTkRfQU5TV0VSEAISEgoOS0lORF9DQU5ESURBVEUQAyKBAQoNQ2xpZW50TWVzc2FnZRIgCgVpbnB1dBgBIAEoCzIPLnB1bmNoLnYxLklucHV0SAASHgoEcGluZxgCIAEoCzIOLnB1bmNoLnYxLlBpbmdIABImCgV2b2ljZRgDIAEoCzIVLnB1bmNoLnYxLlZvaWNlU2lnbmFsSABCBgoEYm9keSJMCgpQbGF5ZXJJbmZvEgoKAmlkGAEgASgJEhEKCXBsYW5ldF9pZBgCIAEoDRIRCgljaGFyYWN0ZXIYAyABKAkSDAoEbmFtZRgEIAEoCSJTCgdXZWxjb21lEiEKA3lvdRgBIAEoCzIULnB1bmNoLnYxLlBsYXllckluZm8SJQoHcGxheWVycxgCIAMoCzIULnB1bmNoLnYxLlBsYXllckluZm8iLAoESm9pbhIkCgZwbGF5ZXIYASABKAsyFC5wdW5jaC52MS5QbGF5ZXJJbmZvIhMKBUxlYXZlEgoKAmlkGAEgASgJIu8BCg1TZXJ2ZXJNZXNzYWdlEiYKCHNuYXBzaG90GAEgASgLMhIucHVuY2gudjEuU25hcHNob3RIABIkCgd3ZWxjb21lGAIgASgLMhEucHVuY2gudjEuV2VsY29tZUgAEh4KBGpvaW4YAyABKAsyDi5wdW5jaC52MS5Kb2luSAASIAoFbGVhdmUYBCABKAsyDy5wdW5jaC52MS5MZWF2ZUgAEh4KBHBvbmcYBSABKAsyDi5wdW5jaC52MS5Qb25nSAASJgoFdm9pY2UYBiABKAsyFS5wdW5jaC52MS5Wb2ljZVNpZ25hbEgAQgYKBGJvZHlCKloocHVuY2hwdW5jaHB1bmNoL3NlcnZlci9nZW4vZ2FtZXBiO2dhbWVwYmIGcHJvdG8z");
 
 /**
  * A point or direction in world space. double, not float, because the sim runs in float64 on both
@@ -59,6 +59,29 @@ export type Input = Message<"punch.v1.Input"> & {
    * @generated from field: punch.v1.Vec3 dir = 2;
    */
   dir?: Vec3 | undefined;
+
+  /**
+   * True on the single tick the player pressed cast. It is an edge, not a held button: the client sends
+   * it once per press and the sim turns it into a cast that runs for a fixed number of ticks. Sending it
+   * every tick while held would restart the cast thirty times a second.
+   *
+   * @generated from field: bool attack = 3;
+   */
+  attack: boolean;
+
+  /**
+   * Where the player is aiming, in world space. Only its direction is read, so its length does not
+   * matter, and a zero vector means "no aim, keep facing as you are".
+   *
+   * This is here because facing is server-owned state. The crosshair lives on the client, but the
+   * direction a character points is in every snapshot and the server decides it, so an aim that never
+   * crossed the wire could not turn anybody: you would cast at the dummy while your body faced wherever
+   * you last walked. Sent only while casting, since walking already sets facing from the direction of
+   * travel.
+   *
+   * @generated from field: punch.v1.Vec3 aim = 4;
+   */
+  aim?: Vec3 | undefined;
 };
 
 /**
@@ -99,6 +122,38 @@ export type PlayerSnapshot = Message<"punch.v1.PlayerSnapshot"> & {
    * @generated from field: string anim = 5;
    */
   anim: string;
+
+  /**
+   * How many ticks of the cast are left to run, 0 when not casting. This is here because it is the first
+   * piece of player state that is neither position nor facing, and reconciliation has to be able to
+   * rebuild it: after a correction the client replays its unconfirmed inputs from the server's state, so
+   * the server's state has to include how far into a cast you were. Costs nothing when idle, because
+   * protobuf leaves a zero off the wire entirely.
+   *
+   * @generated from field: uint32 attack = 6;
+   */
+  attack: number;
+
+  /**
+   * Whether a click is being held in the buffer, waiting for the current cast to reach the point where
+   * the next one can start. It rides the wire for the same reason the counter does: reconciliation
+   * rebuilds the client's prediction from the server's state, and a remembered click that the server
+   * knew about but the client forgot would come out as a cast that fires on one machine and not the other.
+   *
+   * @generated from field: bool attack_buffered = 7;
+   */
+  attackBuffered: boolean;
+
+  /**
+   * Which cast animation this cast rolled, as an index into the client's list of them. It is here
+   * because the variants no longer all last the same time: a longer clip gets a longer root, so the
+   * number of ticks a cast runs for depends on which one came up, and the sim cannot step a player
+   * without knowing it. Everyone watching then draws the same animation you do, which used to be a
+   * per-machine roll that could disagree.
+   *
+   * @generated from field: uint32 attack_clip = 8;
+   */
+  attackClip: number;
 };
 
 /**

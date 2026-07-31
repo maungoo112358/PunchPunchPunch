@@ -39,17 +39,50 @@ function inputAt(i: number): THREE.Vector3 {
   return new THREE.Vector3(Math.cos(a), 0, Math.sin(a));
 }
 
+// When the cast key goes down. Casts now run 16, 16 or 24 ticks depending on which animation the
+// rotation lands on, and the next may start once 6 or fewer are left. These presses walk every branch of
+// that rule, including the part where the length itself changes:
+//   100          a cast from a standing start
+//   105          arrives too early to use, so it must sit in the buffer and fire only when the counter
+//                reaches 6. This is the whole point of the buffer.
+//   200,201,202  three clicks in three ticks. The buffer is one flag, not a queue, so this must buy
+//                exactly ONE extra cast, not three. Gets that wrong and spamming banks free spells.
+//   300          a lone cast again, to check the buffer really did clear itself
+// Five casts in all, which walks the three-clip rotation round more than once, so at least one of them
+// is the long variant and its longer root is pinned by the fixture too.
+// Miss any of this in one language and the two trajectories part company on the very next tick.
+function attackAt(i: number): boolean {
+  return i === 100 || i === 105 || i === 200 || i === 201 || i === 202 || i === 300;
+}
+
+// Where the crosshair is pointing on each tick of a cast. It has to MOVE, and it has to ask for turns
+// the character cannot finish in one tick, because the whole risk in this code is the two languages
+// turning at different rates or rounding the angle differently. A fixed aim would be reached in the
+// first few ticks and then pin the facing, testing nothing for the remaining seventy.
+//
+// Sweeping it right round means every cast includes a near-reversal, which is the worst case for the
+// signed-angle maths, and leaves the turn part-finished at the moment the cast ends.
+function aimAt(i: number): THREE.Vector3 {
+  const a = i * 0.11;
+  return new THREE.Vector3(Math.cos(a), 0.35, Math.sin(a)); // the y is there so the flattening is exercised
+}
+
 const TICKS = 400;
 const state = createPlayerState(new THREE.Vector3(0, RADIUS, 0));
 const steps = [];
 for (let i = 0; i < TICKS; i++) {
-  const input: MoveInput = { seq: i, dir: inputAt(i) };
+  const input: MoveInput = { seq: i, dir: inputAt(i), attack: attackAt(i), aim: aimAt(i) };
   stepPlayer(state, input, planet, path, TICK_DT);
   steps.push({
     dir: [input.dir.x, input.dir.y, input.dir.z],
+    attack: input.attack,
+    aim: [input.aim.x, input.aim.y, input.aim.z],
     position: [state.position.x, state.position.y, state.position.z],
     forward: [state.forward.x, state.forward.y, state.forward.z],
     anim: state.anim,
+    attackLeft: state.attack,
+    buffered: state.buffered,
+    attackClip: state.attackClip,
   });
 }
 
@@ -74,7 +107,11 @@ const lines = [
   `  "steps": [`,
   ...steps.map((s, i) => {
     const end = i === steps.length - 1 ? "" : ",";
-    return `    { "dir": ${arr(s.dir)}, "position": ${arr(s.position)}, "forward": ${arr(s.forward)}, "anim": ${JSON.stringify(s.anim)} }${end}`;
+    return (
+      `    { "dir": ${arr(s.dir)}, "attack": ${s.attack}, "aim": ${arr(s.aim)}, ` +
+      `"position": ${arr(s.position)}, "forward": ${arr(s.forward)}, ` +
+      `"anim": ${JSON.stringify(s.anim)}, "attackLeft": ${s.attackLeft}, "buffered": ${s.buffered}, "attackClip": ${s.attackClip} }${end}`
+    );
   }),
   "  ]",
   "}",

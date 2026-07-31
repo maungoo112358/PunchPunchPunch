@@ -26,7 +26,13 @@ const BUFFER_MS = 1000; // how much snapshot history to keep
 const CLOCK_CATCHUP = 0.1; // how hard the playback clock eases back toward its trailing target each frame
 
 // One remote's pose in one snapshot, flattened out of the protobuf so the hot loop touches plain numbers.
-type Pose = { x: number; y: number; z: number; fx: number; fy: number; fz: number; anim: string };
+// attack rides along so the view can tell a NEW cast from one already running. A chained cast never
+// leaves the Attack clip, so the anim string alone cannot say that a second spell was thrown.
+type Pose = {
+  x: number; y: number; z: number;
+  fx: number; fy: number; fz: number;
+  anim: string; attack: number; attackClip: number;
+};
 type Frame = { t: number; byId: Map<string, Pose> }; // t is server time in ms
 
 // The server's truth about your own player, pulled out of a snapshot for the controller to reconcile
@@ -37,6 +43,12 @@ export type SelfCorrection = {
   x: number; y: number; z: number;
   fx: number; fy: number; fz: number;
   anim: string;
+  // Ticks of cast left to run when the server said this, and whether a click was waiting in the buffer.
+  // Your own prediction is rebuilt from this state after a correction, so both have to come back or the
+  // replay would start mid-swing, or forget a click the server is still holding.
+  attack: number;
+  buffered: boolean;
+  attackClip: number;
 };
 
 export function createWorldSync(world: World, planet: Planet, spawn: THREE.Vector3) {
@@ -124,14 +136,14 @@ export function createWorldSync(world: World, planet: Planet, spawn: THREE.Vecto
             tick: snapshot.tick, ack: snapshot.ack,
             x: p.position.x, y: p.position.y, z: p.position.z,
             fx: p.forward.x, fy: p.forward.y, fz: p.forward.z,
-            anim: p.anim,
+            anim: p.anim, attack: p.attack, buffered: p.attackBuffered, attackClip: p.attackClip,
           };
           continue;
         }
         byId.set(p.id, {
           x: p.position.x, y: p.position.y, z: p.position.z,
           fx: p.forward.x, fy: p.forward.y, fz: p.forward.z,
-          anim: p.anim,
+          anim: p.anim, attack: p.attack, attackClip: p.attackClip,
         });
       }
       buffer.push({ t: snapshot.tick * MS_PER_TICK, byId });
@@ -195,6 +207,8 @@ export function createWorldSync(world: World, planet: Planet, spawn: THREE.Vecto
         player.state.forward.copy(from).applyQuaternion(turn).normalize();
 
         player.state.anim = pa.anim;
+        player.state.attack = pa.attack; // so the view can spot a chained cast, which never leaves Attack
+        player.state.attackClip = pa.attackClip; // which cast animation, so everyone draws the same one
 
         // No second interpolation in worldView: previous mirrors state, so it draws exactly this pose.
         player.previous.position.copy(player.state.position);

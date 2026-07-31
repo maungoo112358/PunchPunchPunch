@@ -18,6 +18,19 @@ message Vec3 {
 message Input {
   uint32 seq = 1;
   Vec3 dir = 2;
+  // True on the single tick the player pressed cast. It is an edge, not a held button: the client sends
+  // it once per press and the sim turns it into a cast that runs for a fixed number of ticks. Sending it
+  // every tick while held would restart the cast thirty times a second.
+  bool attack = 3;
+  // Where the player is aiming, in world space. Only its direction is read, so its length does not
+  // matter, and a zero vector means "no aim, keep facing as you are".
+  //
+  // This is here because facing is server-owned state. The crosshair lives on the client, but the
+  // direction a character points is in every snapshot and the server decides it, so an aim that never
+  // crossed the wire could not turn anybody: you would cast at the dummy while your body faced wherever
+  // you last walked. Sent only while casting, since walking already sets facing from the direction of
+  // travel.
+  Vec3 aim = 4;
 }
 
 // One player as the snapshot sees them. Name and character model are NOT here: they never change while
@@ -28,6 +41,23 @@ message PlayerSnapshot {
   Vec3 position = 3;
   Vec3 forward = 4;
   string anim = 5;
+  // How many ticks of the cast are left to run, 0 when not casting. This is here because it is the first
+  // piece of player state that is neither position nor facing, and reconciliation has to be able to
+  // rebuild it: after a correction the client replays its unconfirmed inputs from the server's state, so
+  // the server's state has to include how far into a cast you were. Costs nothing when idle, because
+  // protobuf leaves a zero off the wire entirely.
+  uint32 attack = 6;
+  // Whether a click is being held in the buffer, waiting for the current cast to reach the point where
+  // the next one can start. It rides the wire for the same reason the counter does: reconciliation
+  // rebuilds the client's prediction from the server's state, and a remembered click that the server
+  // knew about but the client forgot would come out as a cast that fires on one machine and not the other.
+  bool attack_buffered = 7;
+  // Which cast animation this cast rolled, as an index into the client's list of them. It is here
+  // because the variants no longer all last the same time: a longer clip gets a longer root, so the
+  // number of ticks a cast runs for depends on which one came up, and the sim cannot step a player
+  // without knowing it. Everyone watching then draws the same animation you do, which used to be a
+  // per-machine roll that could disagree.
+  uint32 attack_clip = 8;
 }
 
 // The whole world at one server tick. ack is the last input seq the server processed for the client

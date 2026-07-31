@@ -4,6 +4,8 @@ import { createNameplate } from "../entities/nameplate.js";
 import { modelForCharacter } from "../config/characters.js";
 import type { Planet } from "../world/planet.js";
 import type { World } from "./world.js";
+import { LOCAL_ID } from "./world.js";
+import type { SpellFx } from "./spellFx.js";
 
 // Puts the world state on screen. Every frame it walks the player map, gives anyone new a character,
 // makes each wear the model the server assigned, floats their name over their head, takes all that away
@@ -18,9 +20,19 @@ const NAMEPLATE_HEIGHT = 4.5;
 
 type Nameplate = { plate: ReturnType<typeof createNameplate>; name: string };
 
-export function createWorldView(scene: THREE.Scene, world: World, planet: Planet) {
+// aimedAt is asked, at the moment YOUR cast starts, who your wand is pointed at. Passed in as a function
+// rather than as the targeting object, because the view only ever needs that one answer, and because
+// targeting reads the camera, which the view has no business knowing about.
+export function createWorldView(
+  scene: THREE.Scene,
+  world: World,
+  planet: Planet,
+  spells: SpellFx,
+  aimedAt: () => string | null,
+) {
   const characters = new Map<string, Character>();
   const nameplates = new Map<string, Nameplate>();
+  const lastAttack = new Map<string, number>(); // each player's cast counter last frame, to spot a new cast
   const up = new THREE.Vector3();
   const drawPos = new THREE.Vector3();
   const drawFwd = new THREE.Vector3();
@@ -71,6 +83,7 @@ export function createWorldView(scene: THREE.Scene, world: World, planet: Planet
         if (world.players.has(id)) continue;
         character.dispose();
         characters.delete(id);
+        lastAttack.delete(id);
         removeNameplate(id);
       }
 
@@ -87,7 +100,31 @@ export function createWorldView(scene: THREE.Scene, world: World, planet: Planet
         character.model.position.copy(drawPos);
         planet.upAt(drawPos, up);
         character.orient(up, drawFwd);
-        character.setAction(player.state.anim);
+
+        // Fire the spell on the frame this character STARTS its cast, not for every frame it is casting.
+        // Reading the clip it was already on is enough to catch the change, and it works the same for a
+        // remote player, whose anim came off a snapshot, as for you, whose anim came off your keyboard.
+        //
+        // The target is only known for your own cast, because who someone else has locked on to is not
+        // on the wire. A remote's beam therefore fires straight down their facing, which lands in the
+        // right place anyway whenever they were pointed at what they shot, which is nearly always.
+        // A NEW cast is the cast counter jumping UP. Watching the clip name is not enough any more,
+        // because a cast chained into the tail of the last one never leaves "Attack": the counter goes
+        // from a few ticks left straight back to full, and the name never changes. Comparing the counter
+        // against last frame's catches both that and a cast starting from Idle, in one test.
+        const wasAttack = lastAttack.get(id) ?? 0;
+        const nowAttack = player.state.attack;
+        lastAttack.set(id, nowAttack);
+        const fired = nowAttack > wasAttack;
+
+        // Take the sim's choice of animation before starting it, so the clip that plays is the one whose
+        // length the sim is rooting the player for, and the one everyone else is watching.
+        if (fired) character.setAttackClip(player.state.attackClip);
+        character.setAction(player.state.anim, undefined, fired);
+        if (fired) {
+          const targetId = id === LOCAL_ID ? aimedAt() : null;
+          spells.cast(character, targetId ? characters.get(targetId) ?? null : null);
+        }
 
         // Float the name tag over the head along this player's own up, which on a sphere is not yours.
         if (player.name) {

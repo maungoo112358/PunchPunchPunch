@@ -140,9 +140,22 @@ func (x *Vec3) GetZ() float64 {
 // versus run rides in the same three numbers. seq counts ticks up forever, and the server echoes the
 // last one it processed back in Snapshot.ack.
 type Input struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Seq           uint32                 `protobuf:"varint,1,opt,name=seq,proto3" json:"seq,omitempty"`
-	Dir           *Vec3                  `protobuf:"bytes,2,opt,name=dir,proto3" json:"dir,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Seq   uint32                 `protobuf:"varint,1,opt,name=seq,proto3" json:"seq,omitempty"`
+	Dir   *Vec3                  `protobuf:"bytes,2,opt,name=dir,proto3" json:"dir,omitempty"`
+	// True on the single tick the player pressed cast. It is an edge, not a held button: the client sends
+	// it once per press and the sim turns it into a cast that runs for a fixed number of ticks. Sending it
+	// every tick while held would restart the cast thirty times a second.
+	Attack bool `protobuf:"varint,3,opt,name=attack,proto3" json:"attack,omitempty"`
+	// Where the player is aiming, in world space. Only its direction is read, so its length does not
+	// matter, and a zero vector means "no aim, keep facing as you are".
+	//
+	// This is here because facing is server-owned state. The crosshair lives on the client, but the
+	// direction a character points is in every snapshot and the server decides it, so an aim that never
+	// crossed the wire could not turn anybody: you would cast at the dummy while your body faced wherever
+	// you last walked. Sent only while casting, since walking already sets facing from the direction of
+	// travel.
+	Aim           *Vec3 `protobuf:"bytes,4,opt,name=aim,proto3" json:"aim,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -191,15 +204,46 @@ func (x *Input) GetDir() *Vec3 {
 	return nil
 }
 
+func (x *Input) GetAttack() bool {
+	if x != nil {
+		return x.Attack
+	}
+	return false
+}
+
+func (x *Input) GetAim() *Vec3 {
+	if x != nil {
+		return x.Aim
+	}
+	return nil
+}
+
 // One player as the snapshot sees them. Name and character model are NOT here: they never change while
 // connected, so they ride the join and roster messages instead of thirty times a second forever.
 type PlayerSnapshot struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	PlanetId      uint32                 `protobuf:"varint,2,opt,name=planet_id,json=planetId,proto3" json:"planet_id,omitempty"`
-	Position      *Vec3                  `protobuf:"bytes,3,opt,name=position,proto3" json:"position,omitempty"`
-	Forward       *Vec3                  `protobuf:"bytes,4,opt,name=forward,proto3" json:"forward,omitempty"`
-	Anim          string                 `protobuf:"bytes,5,opt,name=anim,proto3" json:"anim,omitempty"`
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	Id       string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	PlanetId uint32                 `protobuf:"varint,2,opt,name=planet_id,json=planetId,proto3" json:"planet_id,omitempty"`
+	Position *Vec3                  `protobuf:"bytes,3,opt,name=position,proto3" json:"position,omitempty"`
+	Forward  *Vec3                  `protobuf:"bytes,4,opt,name=forward,proto3" json:"forward,omitempty"`
+	Anim     string                 `protobuf:"bytes,5,opt,name=anim,proto3" json:"anim,omitempty"`
+	// How many ticks of the cast are left to run, 0 when not casting. This is here because it is the first
+	// piece of player state that is neither position nor facing, and reconciliation has to be able to
+	// rebuild it: after a correction the client replays its unconfirmed inputs from the server's state, so
+	// the server's state has to include how far into a cast you were. Costs nothing when idle, because
+	// protobuf leaves a zero off the wire entirely.
+	Attack uint32 `protobuf:"varint,6,opt,name=attack,proto3" json:"attack,omitempty"`
+	// Whether a click is being held in the buffer, waiting for the current cast to reach the point where
+	// the next one can start. It rides the wire for the same reason the counter does: reconciliation
+	// rebuilds the client's prediction from the server's state, and a remembered click that the server
+	// knew about but the client forgot would come out as a cast that fires on one machine and not the other.
+	AttackBuffered bool `protobuf:"varint,7,opt,name=attack_buffered,json=attackBuffered,proto3" json:"attack_buffered,omitempty"`
+	// Which cast animation this cast rolled, as an index into the client's list of them. It is here
+	// because the variants no longer all last the same time: a longer clip gets a longer root, so the
+	// number of ticks a cast runs for depends on which one came up, and the sim cannot step a player
+	// without knowing it. Everyone watching then draws the same animation you do, which used to be a
+	// per-machine roll that could disagree.
+	AttackClip    uint32 `protobuf:"varint,8,opt,name=attack_clip,json=attackClip,proto3" json:"attack_clip,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -267,6 +311,27 @@ func (x *PlayerSnapshot) GetAnim() string {
 		return x.Anim
 	}
 	return ""
+}
+
+func (x *PlayerSnapshot) GetAttack() uint32 {
+	if x != nil {
+		return x.Attack
+	}
+	return 0
+}
+
+func (x *PlayerSnapshot) GetAttackBuffered() bool {
+	if x != nil {
+		return x.AttackBuffered
+	}
+	return false
+}
+
+func (x *PlayerSnapshot) GetAttackClip() uint32 {
+	if x != nil {
+		return x.AttackClip
+	}
+	return 0
 }
 
 // The whole world at one server tick. ack is the last input seq the server processed for the client
@@ -975,16 +1040,22 @@ const file_game_proto_rawDesc = "" +
 	"\x04Vec3\x12\f\n" +
 	"\x01x\x18\x01 \x01(\x01R\x01x\x12\f\n" +
 	"\x01y\x18\x02 \x01(\x01R\x01y\x12\f\n" +
-	"\x01z\x18\x03 \x01(\x01R\x01z\";\n" +
+	"\x01z\x18\x03 \x01(\x01R\x01z\"u\n" +
 	"\x05Input\x12\x10\n" +
 	"\x03seq\x18\x01 \x01(\rR\x03seq\x12 \n" +
-	"\x03dir\x18\x02 \x01(\v2\x0e.punch.v1.Vec3R\x03dir\"\xa7\x01\n" +
+	"\x03dir\x18\x02 \x01(\v2\x0e.punch.v1.Vec3R\x03dir\x12\x16\n" +
+	"\x06attack\x18\x03 \x01(\bR\x06attack\x12 \n" +
+	"\x03aim\x18\x04 \x01(\v2\x0e.punch.v1.Vec3R\x03aim\"\x89\x02\n" +
 	"\x0ePlayerSnapshot\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1b\n" +
 	"\tplanet_id\x18\x02 \x01(\rR\bplanetId\x12*\n" +
 	"\bposition\x18\x03 \x01(\v2\x0e.punch.v1.Vec3R\bposition\x12(\n" +
 	"\aforward\x18\x04 \x01(\v2\x0e.punch.v1.Vec3R\aforward\x12\x12\n" +
-	"\x04anim\x18\x05 \x01(\tR\x04anim\"d\n" +
+	"\x04anim\x18\x05 \x01(\tR\x04anim\x12\x16\n" +
+	"\x06attack\x18\x06 \x01(\rR\x06attack\x12'\n" +
+	"\x0fattack_buffered\x18\a \x01(\bR\x0eattackBuffered\x12\x1f\n" +
+	"\vattack_clip\x18\b \x01(\rR\n" +
+	"attackClip\"d\n" +
 	"\bSnapshot\x12\x12\n" +
 	"\x04tick\x18\x01 \x01(\rR\x04tick\x12\x10\n" +
 	"\x03ack\x18\x02 \x01(\rR\x03ack\x122\n" +
@@ -1066,27 +1137,28 @@ var file_game_proto_goTypes = []any{
 }
 var file_game_proto_depIdxs = []int32{
 	1,  // 0: punch.v1.Input.dir:type_name -> punch.v1.Vec3
-	1,  // 1: punch.v1.PlayerSnapshot.position:type_name -> punch.v1.Vec3
-	1,  // 2: punch.v1.PlayerSnapshot.forward:type_name -> punch.v1.Vec3
-	3,  // 3: punch.v1.Snapshot.players:type_name -> punch.v1.PlayerSnapshot
-	0,  // 4: punch.v1.VoiceSignal.kind:type_name -> punch.v1.VoiceSignal.Kind
-	2,  // 5: punch.v1.ClientMessage.input:type_name -> punch.v1.Input
-	5,  // 6: punch.v1.ClientMessage.ping:type_name -> punch.v1.Ping
-	7,  // 7: punch.v1.ClientMessage.voice:type_name -> punch.v1.VoiceSignal
-	9,  // 8: punch.v1.Welcome.you:type_name -> punch.v1.PlayerInfo
-	9,  // 9: punch.v1.Welcome.players:type_name -> punch.v1.PlayerInfo
-	9,  // 10: punch.v1.Join.player:type_name -> punch.v1.PlayerInfo
-	4,  // 11: punch.v1.ServerMessage.snapshot:type_name -> punch.v1.Snapshot
-	10, // 12: punch.v1.ServerMessage.welcome:type_name -> punch.v1.Welcome
-	11, // 13: punch.v1.ServerMessage.join:type_name -> punch.v1.Join
-	12, // 14: punch.v1.ServerMessage.leave:type_name -> punch.v1.Leave
-	6,  // 15: punch.v1.ServerMessage.pong:type_name -> punch.v1.Pong
-	7,  // 16: punch.v1.ServerMessage.voice:type_name -> punch.v1.VoiceSignal
-	17, // [17:17] is the sub-list for method output_type
-	17, // [17:17] is the sub-list for method input_type
-	17, // [17:17] is the sub-list for extension type_name
-	17, // [17:17] is the sub-list for extension extendee
-	0,  // [0:17] is the sub-list for field type_name
+	1,  // 1: punch.v1.Input.aim:type_name -> punch.v1.Vec3
+	1,  // 2: punch.v1.PlayerSnapshot.position:type_name -> punch.v1.Vec3
+	1,  // 3: punch.v1.PlayerSnapshot.forward:type_name -> punch.v1.Vec3
+	3,  // 4: punch.v1.Snapshot.players:type_name -> punch.v1.PlayerSnapshot
+	0,  // 5: punch.v1.VoiceSignal.kind:type_name -> punch.v1.VoiceSignal.Kind
+	2,  // 6: punch.v1.ClientMessage.input:type_name -> punch.v1.Input
+	5,  // 7: punch.v1.ClientMessage.ping:type_name -> punch.v1.Ping
+	7,  // 8: punch.v1.ClientMessage.voice:type_name -> punch.v1.VoiceSignal
+	9,  // 9: punch.v1.Welcome.you:type_name -> punch.v1.PlayerInfo
+	9,  // 10: punch.v1.Welcome.players:type_name -> punch.v1.PlayerInfo
+	9,  // 11: punch.v1.Join.player:type_name -> punch.v1.PlayerInfo
+	4,  // 12: punch.v1.ServerMessage.snapshot:type_name -> punch.v1.Snapshot
+	10, // 13: punch.v1.ServerMessage.welcome:type_name -> punch.v1.Welcome
+	11, // 14: punch.v1.ServerMessage.join:type_name -> punch.v1.Join
+	12, // 15: punch.v1.ServerMessage.leave:type_name -> punch.v1.Leave
+	6,  // 16: punch.v1.ServerMessage.pong:type_name -> punch.v1.Pong
+	7,  // 17: punch.v1.ServerMessage.voice:type_name -> punch.v1.VoiceSignal
+	18, // [18:18] is the sub-list for method output_type
+	18, // [18:18] is the sub-list for method input_type
+	18, // [18:18] is the sub-list for extension type_name
+	18, // [18:18] is the sub-list for extension extendee
+	0,  // [0:18] is the sub-list for field type_name
 }
 
 func init() { file_game_proto_init() }

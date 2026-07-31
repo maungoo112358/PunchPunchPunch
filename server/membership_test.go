@@ -60,8 +60,11 @@ func TestJoinRosterAndLeave(t *testing.T) {
 	if welcome.You.Character == "" || welcome.You.Name == "" {
 		t.Fatalf("welcome should assign a character and name, got character=%q name=%q", welcome.You.Character, welcome.You.Name)
 	}
-	if len(welcome.Players) != 0 {
-		t.Fatalf("the first joiner's roster should be empty, got %d", len(welcome.Players))
+	// The roster is everyone already here, which for the first joiner is nobody except the training
+	// dummy. It rides along as an ordinary player so the client draws and targets it with no special
+	// case (dummy.go), which means it shows up here too.
+	if len(welcome.Players) != 1 || welcome.Players[0].Id != dummyID {
+		t.Fatalf("the first joiner's roster should hold only the training dummy, got %d entries", len(welcome.Players))
 	}
 	firstID := welcome.You.Id
 

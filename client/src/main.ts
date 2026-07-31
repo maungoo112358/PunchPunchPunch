@@ -14,6 +14,8 @@ import { createInput } from "./systems/input.js";
 import { createPlayerController } from "./systems/playerController.js";
 import { createWorld, LOCAL_ID } from "./systems/world.js";
 import { createWorldView } from "./systems/worldView.js";
+import { createSpellFx } from "./systems/spellFx.js";
+import { createTargeting } from "./systems/targeting.js";
 import { TICK_DT, MAX_CATCHUP } from "./systems/sim.js";
 import { createCameraFollow } from "./systems/cameraFollow.js";
 import { createSunFollow } from "./systems/sunFollow.js";
@@ -62,7 +64,14 @@ const spawn = new THREE.Vector3(0, planet.radius, 0);
 // in the map, so a player arriving over the network later is just another entry.
 const world = createWorld();
 const localPlayer = world.add(LOCAL_ID, spawn);
-const view = createWorldView(scene, world, planet);
+const spells = createSpellFx(scene); // the beam the wand throws, drawn off the Attack clip
+// Input has to exist before targeting, because the cursor IS the crosshair and targeting reads it every
+// frame. It used to be built further down with the other systems; it moved up here rather than targeting
+// moving down, because targeting has to exist before the view, which asks it what is being aimed at.
+const input = createInput();
+// Aiming: the mouse cursor is the crosshair, and a ray out through it picks who the wand is pointed at.
+const targeting = createTargeting(world, camera, input);
+const view = createWorldView(scene, world, planet, spells, () => targeting.targetId);
 // Fetch and parse all five character models now, so a joiner wears theirs the instant the server names
 // it instead of popping in a moment later.
 preloadModels(ALL_MODELS);
@@ -97,7 +106,6 @@ if (import.meta.env.DEV) {
 }
 
 // --- Systems ---
-const input = createInput();
 const cameraFollow = createCameraFollow(camera, character, input, planet);
 
 // The net layer is built after the login gate resolves, down in startNetworking, not at boot. That lets
@@ -107,36 +115,6 @@ let worldSync: WorldSync | null = null;
 let hud: NetHudHandle | null = null;
 
 const sunFollow = createSunFollow(sun, character);
-
-// P puts a second player in the map a few paces away and takes them out again. It only adds and removes
-// a map entry, and a whole character appears and vanishes because the view draws the map, which is
-// exactly what a snapshot off the network does.
-//
-// NOT behind import.meta.env.DEV, on purpose and only for now: the deployed build is where models get
-// judged, and a DEV-gated key does not exist there at all. Put it back inside the gate once the KayKit
-// versus Quaternius question is settled, because a stray debug key on the live game is not something to
-// leave lying around.
-{
-  const TEST_ID = "test";
-  window.addEventListener("keydown", (e) => {
-    if (e.code === "KeyP") {
-      if (world.players.has(TEST_ID)) {
-        world.remove(TEST_ID);
-        console.log("test player removed");
-      } else {
-        const at = spawn.clone().add(new THREE.Vector3(4, 0, 2));
-        planet.placeOnSurface(at);
-        const test = world.add(TEST_ID, at);
-        // Wears the KayKit mage so it stands next to your Quaternius character under the same sun, the
-        // same toon ramp and the same ink line. That side by side is the whole point of the test player
-        // while we are deciding whether to move the cast over to KayKit.
-        test.character = "mage";
-        test.name = "KayKit Mage";
-        console.log("test player added at", at);
-      }
-    }
-  });
-}
 
 // --- Update registry ---
 // Two lists, because two clocks. Gameplay runs on a fixed tick so the same inputs always produce the
@@ -155,7 +133,9 @@ const simulated: Updatable[] = [world];
 // Presentation. The draw pass goes first so the models are in place before the camera and the shadow
 // follow them.
 const drawn: Renderable[] = [view];
-const perFrame = [view, cameraFollow, sunFollow, sky, grass].filter(
+// targeting goes before view, so the lock is decided against this frame's camera before the view asks
+// who it is; spells goes after, so a beam lit this frame reads the arm position the view just drew.
+const perFrame = [targeting, view, spells, cameraFollow, sunFollow, sky, grass].filter(
   (u): u is Updatable => Boolean(u),
 );
 
@@ -319,9 +299,22 @@ function startNetworking(start: NetStart) {
     }
   });
 
+  // Where the crosshair is pointing, as a direction from you. Locked onto somebody, it is the line to
+  // them, so the caster turns to face exactly what is being shot. Locked onto nothing, it is the way the
+  // camera is looking, so a cast at empty air still turns you to face the way you are aiming rather than
+  // firing sideways out of your hip.
+  const aimDir = new THREE.Vector3();
+  const getAim = () => {
+    const id = targeting.targetId;
+    const target = id ? world.players.get(id) : null;
+    if (target) return aimDir.copy(target.state.position).sub(localPlayer.state.position);
+    return aimDir.copy(cameraFollow.getForward());
+  };
+
   const controller = createPlayerController(
     localPlayer, input, cameraFollow, planet, path, session.sendInput,
     () => ws.selfCorrection, // the server's latest word on our own player, to reconcile against
+    getAim,
   );
   simulated.push(controller); // from now it steps every tick alongside world
 

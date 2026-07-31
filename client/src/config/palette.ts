@@ -25,6 +25,22 @@ export const COLORS = {
 
   // --- Props (parked: future MegaKit foliage) ---
   LEAF:          0x5e8a72, // #5e8a72  cool teal-green tint.
+
+  // --- Spell (systems/spellFx.ts, systems/targeting.ts) ---
+  // The duel green, and it is green all the way through. There is deliberately NO white centre: a white
+  // core reads as a laser pointer or a strip light, and washes the colour out of the middle of the beam
+  // exactly where the eye looks hardest. Keeping every layer green, and letting the layers differ in
+  // lightness instead of in hue, is what makes it read as enchanted rather than industrial.
+  //
+  // These go on unlit materials with tone mapping off, so the hex lands on screen as written, the same
+  // deal as the sky. Additive blending stacks them, so where the layers overlap the middle still comes
+  // out brighter without any white being in the palette.
+  //
+  // The field is already green, so these are far more saturated and far brighter than the grass ever
+  // gets, which is what keeps the beam from sinking into it.
+  SPELL_CORE:    0x8bffb0, // #8bffb0  pale mint, the bright inner line of the beam.
+  SPELL_GLOW:    0x12e357, // #12e357  deep emerald, the soft aura around it.
+  SPELL_BURST:   0x5cffa0, // #5cffa0  spring green flash where it lands.
 };
 
 // Raw sRGB components [0..1] of a hex, for shader uniforms that must stay in DISPLAY space (not

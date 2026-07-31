@@ -73,15 +73,19 @@ func (s *server) tick(ctx context.Context) {
 
 	// One players list, shared by every snapshot. Only the ack differs per recipient, because it is that
 	// client's own last processed input, which is how they later tell which predictions are confirmed.
-	players := make([]*pb.PlayerSnapshot, 0, len(s.welcomed))
+	players := make([]*pb.PlayerSnapshot, 0, len(s.welcomed)+1)
+	players = append(players, dummySnapshot()) // the training dummy, a player that never moves (dummy.go)
 	for id := range s.welcomed {
 		c := current[id]
 		players = append(players, &pb.PlayerSnapshot{
-			Id:       c.ID,
-			PlanetId: 0,
-			Position: vecToPB(c.state.Position),
-			Forward:  vecToPB(c.state.Forward),
-			Anim:     c.state.Anim,
+			Id:             c.ID,
+			PlanetId:       0,
+			Position:       vecToPB(c.state.Position),
+			Forward:        vecToPB(c.state.Forward),
+			Anim:           c.state.Anim,
+			Attack:         uint32(c.state.Attack),
+			AttackBuffered: c.state.Buffered,
+			AttackClip:     uint32(c.state.AttackClip),
 		})
 	}
 
@@ -161,7 +165,8 @@ func (s *server) handleJoins(ctx context.Context, all []*Client, current map[str
 		// The roster is everyone welcomed so far, which excludes this newcomer since it is not in the set
 		// yet. If two join on the same tick the first is added before the second's roster is built, so the
 		// second sees the first.
-		roster := make([]*pb.PlayerInfo, 0, len(s.welcomed))
+		roster := make([]*pb.PlayerInfo, 0, len(s.welcomed)+1)
+		roster = append(roster, dummyInfo()) // the training dummy, in the roster so the client draws it (dummy.go)
 		for other := range s.welcomed {
 			roster = append(roster, playerInfo(current[other]))
 		}
@@ -228,5 +233,9 @@ func pbToInput(in *pb.Input) sim.Input {
 	if d := in.GetDir(); d != nil {
 		dir = sim.Vec3{X: d.X, Y: d.Y, Z: d.Z}
 	}
-	return sim.Input{Seq: int(in.Seq), Dir: dir}
+	aim := sim.Vec3{}
+	if a := in.GetAim(); a != nil {
+		aim = sim.Vec3{X: a.X, Y: a.Y, Z: a.Z}
+	}
+	return sim.Input{Seq: int(in.Seq), Dir: dir, Attack: in.GetAttack(), Aim: aim}
 }

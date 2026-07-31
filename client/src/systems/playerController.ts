@@ -19,7 +19,12 @@ import type { SelfCorrection } from "./worldSync.js";
 //
 // Runs on the fixed tick, never on the frame's own elapsed time, because the sim has to be replayable.
 
-type IntentSource = { getDirection(): THREE.Vector3 };
+type IntentSource = { getDirection(): THREE.Vector3; consumeAttack(): boolean };
+
+// Where the crosshair is pointing, as a world-space direction from the player, or null when it is not
+// over anything worth aiming at. Passed in rather than read here, because working it out needs the
+// target list and the camera, and the controller has no business knowing about either.
+type AimSource = () => THREE.Vector3 | null;
 type SendInput = (input: MoveInput) => void;
 type GetCorrection = () => SelfCorrection | null;
 
@@ -42,6 +47,7 @@ export function createPlayerController(
   path: Road | null,
   send?: SendInput,
   getCorrection?: GetCorrection,
+  getAim?: AimSource,
 ) {
   const pending: MoveInput[] = []; // inputs applied and sent, newest last, waiting for the server to confirm
   let nextSeq = 0;
@@ -66,6 +72,9 @@ export function createPlayerController(
     predicted.position.set(c.x, c.y, c.z);
     predicted.forward.set(c.fx, c.fy, c.fz);
     predicted.anim = c.anim;
+    predicted.attack = c.attack; // rewind the cast counter too, or the replay below starts mid-swing
+    predicted.buffered = c.buffered;
+    predicted.attackClip = c.attackClip;
     for (const inp of pending) stepPlayer(predicted, inp, planet, path, TICK_DT);
 
     // How far the prediction was from the server's truth: the headline netcode number, normally near zero.
@@ -108,6 +117,9 @@ export function createPlayerController(
           predicted.position.set(c.x, c.y, c.z);
           predicted.forward.set(c.fx, c.fy, c.fz);
           predicted.anim = c.anim;
+          predicted.attack = c.attack;
+          predicted.buffered = c.buffered;
+          predicted.attackClip = c.attackClip;
         }
       }
 
@@ -116,7 +128,18 @@ export function createPlayerController(
       const fwd = cameraFollow.getForward();
       const right = cameraFollow.getRight();
       const dir = new THREE.Vector3().copy(fwd).multiplyScalar(intent.z).addScaledVector(right, intent.x);
-      const record: MoveInput = { seq: nextSeq++, dir };
+      // Taken once a tick and stored in the record, not read again later, because the record is what gets
+      // replayed after a correction. If the replay asked the keyboard a second time the press would be
+      // long gone and the cast would vanish on every correction.
+      const attack = input.consumeAttack();
+
+      // The aim is only worth sending while it is being used, which is the tick the cast starts and every
+      // tick it runs for. Walking sets facing from the direction of travel and ignores the aim entirely,
+      // so the rest of the time this is a zero vector, which protobuf leaves off the wire for free.
+      const aim = new THREE.Vector3();
+      if (attack || predicted.attack > 0) aim.copy(getAim?.() ?? aim);
+
+      const record: MoveInput = { seq: nextSeq++, dir, attack, aim };
       send?.(record);
 
       if (enabled) {
@@ -130,6 +153,9 @@ export function createPlayerController(
       player.state.position.copy(predicted.position).add(renderError);
       player.state.forward.copy(predicted.forward);
       player.state.anim = predicted.anim;
+      player.state.attack = predicted.attack;
+      player.state.buffered = predicted.buffered;
+      player.state.attackClip = predicted.attackClip;
     },
   };
 }

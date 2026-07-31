@@ -85,7 +85,12 @@ export function createSession(url: string, handlers: ServerHandlers) {
       const message = create(ClientMessageSchema, {
         body: {
           case: "input",
-          value: { seq: input.seq, dir: { x: input.dir.x, y: input.dir.y, z: input.dir.z } },
+          value: {
+            seq: input.seq,
+            dir: { x: input.dir.x, y: input.dir.y, z: input.dir.z },
+            attack: input.attack,
+            aim: { x: input.aim.x, y: input.aim.y, z: input.aim.z },
+          },
         },
       });
       connection.send(encode(ClientMessageSchema, message, encoding));
