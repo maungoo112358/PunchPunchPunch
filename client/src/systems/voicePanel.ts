@@ -59,7 +59,9 @@ function barWidth(level: number): number {
 export function createVoicePanel(cfg: VoicePanel) {
   const panel = document.createElement("div");
   panel.style.cssText = [
-    "position:fixed", "top:8px", "left:8px", "padding:8px 10px",
+    // Top RIGHT, because the netcode HUD owns the top left and the two were overlapping: the voice panel
+    // sat on top of it and hid the round-trip and tick rows, which are the two you actually read.
+    "position:fixed", "top:8px", "right:8px", "padding:8px 10px",
     "background:rgba(0,0,0,0.62)", "color:#e8e8e8",
     "font:12px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace", "line-height:1.5",
     "border-radius:5px", "z-index:11", "min-width:190px",
