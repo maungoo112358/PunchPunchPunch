@@ -9,16 +9,18 @@ import { addGrass } from "./world/grass.js";
 import { addHeroLight } from "./world/heroLight.js";
 import { createPlanetGrid } from "./world/planetGrid.js";
 import { createProps, footprintsFromEntries } from "./systems/props.js";
+import { scatterRandomProps } from "./systems/propScatter.js";
 import placements from "./config/propPlacements.yaml";
 import { createInput } from "./systems/input.js";
-import { createPlayerController } from "./systems/playerController.js";
-import { createWorld, LOCAL_ID } from "./systems/world.js";
+import { createWorld } from "./systems/world.js";
 import { createWorldView } from "./systems/worldView.js";
 import { createSpellFx } from "./systems/spellFx.js";
 import { createTargeting } from "./systems/targeting.js";
 import { TICK_DT, MAX_CATCHUP } from "./systems/sim.js";
 import { createCameraFollow } from "./systems/cameraFollow.js";
 import { createSunFollow } from "./systems/sunFollow.js";
+import { createPaperPlane } from "./entities/PaperPlane.js";
+import { createGlideFlight } from "./systems/glideFlight.js";
 import { createSession } from "./net/session.js";
 import { createTimeSync } from "./net/timeSync.js";
 import { createWorldSync } from "./systems/worldSync.js";
@@ -60,10 +62,10 @@ addHeroLight(camera); // warm fill on the character, follows the view
 // Spawn at the north pole, where up == +Y so the character stands upright with no reorientation.
 const spawn = new THREE.Vector3(0, planet.radius, 0);
 
-// Everyone in the world lives in here, you included, as one entry in a map. The view draws whatever is
-// in the map, so a player arriving over the network later is just another entry.
+// Everyone ELSE in the world lives in here. The view draws whatever is in the map, so a remote player
+// arriving over the network is just another entry. Phase 1 (docs/Phase1.md): the local player is a plane
+// now, not a walking character, so it is deliberately not added here — see the flight prototype below.
 const world = createWorld();
-const localPlayer = world.add(LOCAL_ID, spawn);
 const spells = createSpellFx(scene); // the beam the wand throws, drawn off the Attack clip
 // Input has to exist before targeting, because the cursor IS the crosshair and targeting reads it every
 // frame. It used to be built further down with the other systems; it moved up here rather than targeting
@@ -72,24 +74,33 @@ const input = createInput();
 // Aiming: the mouse cursor is the crosshair, and a ray out through it picks who the wand is pointed at.
 const targeting = createTargeting(world, camera, input);
 const view = createWorldView(scene, world, planet, spells, () => targeting.targetId);
-// Fetch and parse all five character models now, so a joiner wears theirs the instant the server names
-// it instead of popping in a moment later.
+// Fetch and parse all five character models now, so any OTHER connected player wears theirs the instant
+// the server names it. Still needed in Phase 1: other real players on the live server are still walking
+// characters, only the local player has become a plane.
 preloadModels(ALL_MODELS);
-// The camera, the grass parting and the sun's shadow all follow you specifically, so they need your
-// character object now. Its model is null until the glTF loads, which all three already handle.
-const character = view.characterFor(LOCAL_ID);
 
-// Prop placements come from config/propPlacements.yaml. Work out their grass-clearing footprints first,
-// from the raw entries, so the grass can carve around each prop as it builds (no blades poking over them).
-const propFootprints = footprintsFromEntries(placements, grid);
+// --- Phase 1 flight prototype (docs/Phase1.md) ---
+// Replaces the local walking character with a paper plane flown by glide physics. The camera, the grass
+// parting and the sun's shadow all follow it the same way they used to follow the character, because
+// createPaperPlane hands back the same { model } shape Character.ts does.
+const plane = createPaperPlane(0xf4f1e8); // placeholder off-white paper color, easy to swap later
+scene.add(plane.model);
+const flight = createGlideFlight(plane, input, planet, spawn);
 
-// Grass over the whole planet; needs the character (parting) + planet (radius/normals).
+// Prop placements come from config/propPlacements.yaml, plus a fixed random scatter (systems/propScatter.js)
+// so there is something to judge motion against while flight-testing (docs/Phase1.md) — remove the scatter
+// once the real "dress the planet with props" pass exists. Work out grass-clearing footprints first, from
+// the raw entries, so the grass can carve around each prop as it builds (no blades poking over them).
+const allPlacements = [...placements, ...scatterRandomProps(spawn.clone().normalize())];
+const propFootprints = footprintsFromEntries(allPlacements, grid);
+
+// Grass over the whole planet; needs the plane (parting) + planet (radius/normals).
 // path carves its footprint clear of blades; propFootprints clears props.
-const grass = addGrass(scene, character, planet, path, propFootprints);
+const grass = addGrass(scene, plane, planet, path, propFootprints);
 
-// Load + place every prop from the YAML.
+// Load + place every prop, hand-placed + scattered alike.
 const props = createProps(scene, grid);
-props.loadAll(placements);
+props.loadAll(allPlacements);
 
 // Dev-only placement editor (press M). import.meta.env.DEV is true under `npm run dev` and false in a
 // production build, so Vite strips this block (and the editor + grid modules) out of the released game.
@@ -106,15 +117,15 @@ if (import.meta.env.DEV) {
 }
 
 // --- Systems ---
-const cameraFollow = createCameraFollow(camera, character, input, planet);
+const cameraFollow = createCameraFollow(camera, plane, input, planet);
 
 // The net layer is built after the login gate resolves, down in startNetworking, not at boot. That lets
 // the world render behind the login overlay. Until a token (or a guest's none) comes back, these stay
-// null and the render loop simply skips them, and the controller has not yet joined the sim list.
+// null and the render loop simply skips them.
 let worldSync: WorldSync | null = null;
 let hud: NetHudHandle | null = null;
 
-const sunFollow = createSunFollow(sun, character);
+const sunFollow = createSunFollow(sun, plane);
 
 // --- Update registry ---
 // Two lists, because two clocks. Gameplay runs on a fixed tick so the same inputs always produce the
@@ -125,9 +136,11 @@ const sunFollow = createSunFollow(sun, character);
 type Updatable = { update(dt: number): void };
 type Renderable = { render(alpha: number): void };
 
-// Gameplay. Steps by TICK_DT, never by the frame's own time. World goes first: it files everyone's
-// current state away as "where they were" before the controller overwrites it. The controller is pushed
-// on once networking starts, so before login this list is just world filing away an empty map.
+// Gameplay. Steps by TICK_DT, never by the frame's own time. World goes first: it files away every
+// remote player's current state as "where they were" before the next snapshot overwrites it, which is
+// what lets worldView blend a smooth glide between ticks. Phase 1: the local player has no per-tick
+// controller here anymore (see glideFlight in perFrame instead), so before anyone else joins this list is
+// just world filing away an empty map.
 const simulated: Updatable[] = [world];
 
 // Presentation. The draw pass goes first so the models are in place before the camera and the shadow
@@ -135,7 +148,9 @@ const simulated: Updatable[] = [world];
 const drawn: Renderable[] = [view];
 // targeting goes before view, so the lock is decided against this frame's camera before the view asks
 // who it is; spells goes after, so a beam lit this frame reads the arm position the view just drew.
-const perFrame = [targeting, view, spells, cameraFollow, sunFollow, sky, grass].filter(
+// flight goes first of all: it drives the plane's own transform, and cameraFollow/sunFollow/grass all
+// read it this same frame.
+const perFrame = [flight, targeting, view, spells, cameraFollow, sunFollow, sky, grass].filter(
   (u): u is Updatable => Boolean(u),
 );
 
@@ -299,57 +314,36 @@ function startNetworking(start: NetStart) {
     }
   });
 
-  // Where the crosshair is pointing, as a direction from you. Locked onto somebody, it is the line to
-  // them, so the caster turns to face exactly what is being shot. Locked onto nothing, it is the way the
-  // camera is looking, so a cast at empty air still turns you to face the way you are aiming rather than
-  // firing sideways out of your hip.
-  const aimDir = new THREE.Vector3();
-  const getAim = () => {
-    const id = targeting.targetId;
-    const target = id ? world.players.get(id) : null;
-    if (target) return aimDir.copy(target.state.position).sub(localPlayer.state.position);
-    return aimDir.copy(cameraFollow.getForward());
-  };
-
-  const controller = createPlayerController(
-    localPlayer, input, cameraFollow, planet, path, session.sendInput,
-    () => ws.selfCorrection, // the server's latest word on our own player, to reconcile against
-    getAim,
-  );
-  simulated.push(controller); // from now it steps every tick alongside world
-
-  // The netcode HUD. Shipped, not dev-only, because the whole point of prediction and the latency slider
-  // only shows against the real round trip of the live server. Toggle the panel with I; O also flips
-  // prediction. A once-a-second sampler turns the running byte and correction counters into rates.
-  let bytesUpRate = 0, bytesDownRate = 0, corrRate = 0;
-  let lastBytesUp = 0, lastBytesDown = 0, lastCorr = 0;
+  // Phase 1 (docs/Phase1.md): there is no local prediction/reconciliation controller anymore. The plane
+  // moves by glideFlight in the perFrame list above, and nothing about it is sent over the network yet
+  // (known limitation, see Phase1.md — other players on the live server will not see you fly). The
+  // netcode HUD's old prediction readout (pred err / corr/s / in buf) has nothing real to show until
+  // flight is networked, so those rows are dropped rather than left showing stale walking-sim numbers.
+  // RTT/tick/bytes/id stay, since those are real facts about the live connection.
+  let bytesUpRate = 0, bytesDownRate = 0;
+  let lastBytesUp = 0, lastBytesDown = 0;
   window.setInterval(() => {
     bytesUpRate = session.bytesUp - lastBytesUp; lastBytesUp = session.bytesUp;
     bytesDownRate = session.bytesDown - lastBytesDown; lastBytesDown = session.bytesDown;
-    corrRate = controller.corrections - lastCorr; lastCorr = controller.corrections;
   }, 1000);
 
   const h = createNetHud({
     rows: () => ({
       rtt: `${timeSync.rttMs.toFixed(0)}ms`,
       tick: ws.serverTick,
-      "pred err": controller.predictionError.toFixed(3),
-      "corr/s": corrRate,
-      "in buf": controller.pending.length,
       "up B/s": bytesUpRate,
       "dn B/s": bytesDownRate,
       id: ws.myId ?? "-",
     }),
     onLatency: (ms) => session.setLatency(ms),
-    onTogglePrediction: () => controller.togglePrediction(),
-    predictionOn: () => controller.enabled,
+    onTogglePrediction: () => {}, // no local controller to toggle in Phase 1
+    predictionOn: () => false,
     onToggleEncoding: () => session.setEncoding(session.encoding === "json" ? "protobuf" : "json"),
     encoding: () => session.encoding,
   });
   hud = h; // the render loop reads this to draw the readout
   window.addEventListener("keydown", (e) => {
     if (e.code === "KeyI") h.toggle();
-    if (e.code === "KeyO") controller.togglePrediction();
   });
 }
 
