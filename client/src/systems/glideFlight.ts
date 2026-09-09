@@ -21,9 +21,7 @@ const PITCH_ACCEL = 6; // speed gained per second of full dive
 const DRAG = 1.5; // speed always bleeds off at this rate, whether or not you are diving
 const CLIMB_RATE = 4; // altitude gained per second of full climb
 const TURN_RATE = 1.4; // radians/sec of turn at full bank
-const VISUAL_ROLL = 0.5; // radians of cosmetic bank tilt at full input, does not affect the turn above.
-// Kept modest on purpose: a hard roll on the thin placeholder shape can present nearly edge-on to a
-// camera sitting directly behind it and read as a dive rather than a turn. Revisit once the shape is real.
+const VISUAL_ROLL = 0.9; // radians of cosmetic bank tilt at full input, does not affect the turn above
 const VISUAL_PITCH = 0.45; // radians of cosmetic nose tilt at full input
 const ORIENT_DAMP = 8; // how fast the visual tilt eases toward its target, higher = snappier
 
@@ -51,7 +49,7 @@ const _localX = new THREE.Vector3(1, 0, 0);
 const _localZ = new THREE.Vector3(0, 0, 1);
 
 export function createGlideFlight(
-  plane: { model: THREE.Object3D; forward: THREE.Vector3 },
+  plane: { model: THREE.Object3D },
   input: MoveIntent,
   planet: Planet,
   spawn: THREE.Vector3,
@@ -60,7 +58,7 @@ export function createGlideFlight(
 ) {
   const state: GlideState = {
     position: spawn.clone(),
-    forward: plane.forward, // same object, not a copy: cameraFollow reads plane.forward directly
+    forward: new THREE.Vector3(0, 0, 1),
     speed: startSpeed,
     altitude: startAltitude,
     roll: 0,
